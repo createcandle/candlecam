@@ -1,0 +1,390 @@
+#extension-candlecam-view .clicked{
+	border-left:10px solid white;
+	background-color:rgba(255,255,255,.1);
+}
+
+#extension-candlecam-overview{
+	margin-top:6rem;
+}
+
+#extension-candlecam-picture-holder{
+	background-color:black;
+	width:100vw;
+	height:100vh;
+	position:fixed;
+	top:0;
+	left:0;
+    background-repeat: no-repeat;
+    background-size: contain;
+	background-position: center; 
+	display:flex;
+	flex-wrap:wrap;
+	align-content: space-between;
+	justify-content: center;
+	align-items: flex-end;
+    /*z-index: -1;*/
+}
+
+#extension-candlecam-picture-exit{
+	border:1px solid white;
+	opacity:.4;
+	cursor:pointer;
+	padding:2rem;
+	border-bottom: none;
+	border-top-left-radius: .5rem;
+	border-top-right-radius: .5rem;
+	display: inline-block;
+}
+
+
+#extension-candlecam-picture-exit:hover{
+	opacity:1;
+	background-color:#5288af;
+}
+
+
+#extension-candlecam-photos-list{
+	background-color:rgba(255,255,255,.1);
+	display:flex;
+	flex-wrap:wrap;
+}
+
+
+.extension-candlecam-list-thumbnail-container{
+	width:15rem;
+	height:15rem;
+	display:flex;
+	align-items: center;
+	justify-content: center;
+	background-color:black;
+	border-radius: .5rem;
+}
+
+
+.extension-candlecam-list-thumbnail{
+	cursor:pointer;
+	max-width: calc(100% - 10px);
+	max-height: calc(100% - 10px);
+}
+
+.extension-candlecam-list-thumbnail:hover{
+	filter: brightness(120%);
+}
+
+#extension-candlecam-dropzone {
+    height: 6rem;
+    border: 2px dashed #ccc;
+    color: #ccc;
+    text-align: center;
+		display:flex;
+		align-content: center;
+		justify-content: center;
+		align-items: center;
+		margin-bottom:.2rem;
+		display:none;
+}
+
+#extension-candlecam-dropzone.extension-candlecam-dragover {
+    border-color: #000;
+    color: #000;
+		background-color:white;
+}
+
+
+#extension-candlecam-icon{
+  display: inline-block;
+  width: 5rem;
+  height: 2rem;
+  background-image: url('../images/menu-icon.svg');
+  background-size: contain;
+  background-size: 4rem;
+  background-repeat: no-repeat;
+  background-position: 0;
+}
+
+#extension-candlecam-icon:hover{
+	background-image: url('../images/menu-icon-open.svg');
+}
+
+
+#extension-candlecam-view .extension-candlecam-hidden{
+	display:none;
+}
+
+#extension-candlecam-content-container h3{
+	margin-top:3rem;
+}
+
+.zoom {
+  cursor: move;
+  fill: none;
+  pointer-events: all;
+}
+
+.extension-candlecam-hidden{
+	display:none;
+}
+
+#extension-candlecam-view li{
+	padding:1rem;
+	margin-bottom:1rem;
+}
+
+#main-menu #extension-candlecam-menu-item {
+  background-image: url('../images/menu-icon.svg');
+}
+
+
+#extension-candlecam-view {
+  height: 100%; /*calc(100% - 7.6rem);*/
+  box-sizing: border-box;
+  /*overflow: auto;*/
+	overflow: auto;
+	position: absolute;
+	top: 7.6rem;
+	left: 0;
+	padding: 2rem;
+}
+
+
+#extension-candlecam-content {
+	display:flex;
+	flex-direction: column;
+	flex-direction: column;
+	overflow: auto;
+  position: relative;
+  text-align: left;
+  font-size: 1.6rem;
+  color: #fff;
+	height:auto;
+}
+
+#extension-candlecam-content-container{
+	height:100%;
+	max-height: 100%;
+}
+
+#extension-candlecam-response{
+	padding: 2rem;
+	background-color: rgba(255,0,0,.9);
+	border-radius: .5rem;
+	opacity:0;
+	margin-bottom: 10rem;
+}
+
+
+
+#extension-candlecam-clock-container{
+
+}
+
+#extension-candlecam-clock{
+	padding:3rem;
+	font-size:6rem;
+	font-weight: bold;
+	text-shadow: 2px 2px 4px rgba(0,0,0,.2);
+	cursor:default;
+}
+
+/*
+
+LIST
+
+*/
+
+
+.extension-candlecam-list-item{
+	width:15rem;
+	display:inline-block;
+	padding:.2rem;
+}
+
+.extension-candlecam-list-item > span{
+	word-wrap: break-word;
+}
+
+.extension-candlecam-deletable_item{
+	/*background-color:rgba(255,255,255,.1);*/
+	border-radius:.5rem;
+	display:block;
+	cursor: pointer;
+	font-size:1.2rem;
+	position:relative;
+	min-height: 3rem;
+	padding: .2rem;
+}
+
+.extension-candlecam-deletable_item:hover{
+	background-color:red;
+	padding-left:3rem;
+}
+
+.extension-candlecam-deletable_item:hover::before{
+	content: " X ";
+	color:white;
+	padding: .7rem .4rem .3rem .8rem;
+	background-color:	red;
+	border-radius: 1.5rem;
+	margin-right: 1rem;
+	margin-top: .2rem;
+	display: inline-block;
+	padding: .7rem .8rem .4rem .9rem;
+	font-size: 1rem;
+	font-weight: bold;
+	position:absolute;
+	left:.2rem;
+}
+
+.extension-candlecam-deletable_item:hover::before{
+	color:red;
+	background-color:	white;
+}
+
+
+#extension-candlecam-clock-container,
+#extension-candlecam-picture-exit-container{
+	width:100%;
+}
+
+#extension-candlecam-picture-exit-container{
+	text-align:center;
+}
+
+
+
+
+
+
+
+/*  DOORBELL  */
+
+
+#extension-candlecam-settings-button-container{
+    text-align: right;
+    height: 8rem;
+    padding-right: 2rem;
+}
+
+#extension-candlecam-settings-button{
+    background-image: url(/images/settings-icon.png);    
+    background-position: center;
+    background-size: 50%;
+    background-color: #79add1;
+    right:1.6rem;
+}
+
+
+#extension-candlecam-settings-container{
+    position: fixed;
+    top:0;
+    right: 0;
+    width: 50%;
+    height: 100vh;
+    min-width: 40rem;
+    max-width: 100%;
+    background-color: rgba(0,0,0,.7);
+    padding:2rem 10rem 2rem 2rem;
+}
+
+
+#extension-candlecam-main-buttons-container{
+    position: fixed;
+    bottom: 20%;
+    left: 2rem;
+    width: calc(100% - 4rem);
+    text-align: center;
+    z-index:100;
+}
+
+#extension-candlecam-main-buttons-container button{
+    width:7rem;
+    height:7rem;
+    background-size: contain;
+    background-size: 5.5rem;
+    background-repeat: no-repeat;
+    background-position: 0;
+    background-position: center center;
+    cursor:pointer;
+    border-radius: 50%;
+    position:relative;
+}
+
+#extension-candlecam-main-buttons-container button:hover{
+    opacity:1;
+}
+
+
+#extension-candlecam-main-buttons-container button:not(:first-child){
+    margin-left:4rem;
+}
+
+#extension-candlecam-door-release-button{
+    background-color:green;
+    background-image: url('../images/open-door.svg');
+}
+
+
+#extension-candlecam-door-close-button{
+    background-color:red;
+    background-image: url('../images/closed-door.svg');
+}
+
+#extension-candlecam-shaka-video{
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+}
+
+
+#menu-button, #back-button{
+    z-index:1;
+}
+
+
+@media screen and (min-width: 801px) {
+	#extension-candlecam-view-picture-holder{
+		position:absolute;
+		left:0;
+		top: 0;
+		height:100vh; 
+		width:100vw;
+		
+	}
+	
+	/*
+	#extension-candlecam-content{
+		left:9.6rem;
+		top:0;
+	}
+	*/
+	
+	#extension-candlecam-view{
+		top:0;
+		left:9.6rem;
+	}
+	
+	#extension-candlecam-content-container{
+		
+		height:auto;
+		width: calc(100% - 11rem);
+	}
+	
+	/*
+	.extension-candlecam-tab{
+		width: calc(100% - 12rem);
+	}
+	*/
+	#extension-candlecam-dropzone {
+		display:flex;
+	}
+	
+	.extension-candlecam-inline{
+		display:inline-block;
+	}
+	
+	#extension-candlecam-response{
+		width: calc(100% - 22rem);
+	}
+	
+}
