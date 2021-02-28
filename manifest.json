@@ -38,6 +38,10 @@
           "description": "How many seconds between changing to another random photo.",
           "type": "string"
         },
+        "Use microphone": {
+          "description": "Should audio also be recorded and transmitted? This is not compatible with Voco, since the microphone currently cannot be shared.",
+          "type": "boolean"
+        },
         "Contain": {
           "description": "If enabled, pictures will be shown in full, with black bars around them. If disabled, they will fit the screen fully, but parts may be cut-off.",
           "type": "boolean"
