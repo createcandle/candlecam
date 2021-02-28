@@ -35,7 +35,10 @@ import base64
 
 import tornado.web
 
-
+try:
+    from gpiozero import Button
+except:
+    print("Could not load gpiozero library")
 
 
 
@@ -137,6 +140,8 @@ class CandlecamAPIHandler(APIHandler):
             self.name = 'candlecam' # thing name
             self.https = False
             self.own_ip = get_ip()
+            
+            self.encode_audio = False
 
 
             print("self.adapter.persistence_file_path = " + str(self.adapter.persistence_file_path))
@@ -638,7 +643,16 @@ class CandlecamAPIHandler(APIHandler):
         
         #self.thing = make_thing()
         
+        self.button = Button(17)
+
+        self.button.when_pressed = self.ding_dong('ding')
+        button.when_released = self.ding_dong('dong')
+        
+        
         print("end of init")
+        
+    def ding_dong(self, state):
+        print("in ding_dong. State: " + str(state))
         
         
     def ffmpeg(self):
@@ -661,10 +675,16 @@ class CandlecamAPIHandler(APIHandler):
         
         # with audio:
         
+        print("encode_audio = " + str(self.encode_audio))
+        ffmpeg_command = 'ffmpeg  -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 '
+        ffmpeg_command += '-muxdelay 0 -vcodec h264_omx -keyint_min 0 -g 10 '
+        if self.encode_audio:
+            ffmpeg_command += '-f alsa -thread_queue_size 16 -ac 1 -ar 44100 -i dsnoop:1,0 '
+        ffmpeg_command += '-map 0:v -b:v 400k -video_track_timescale 9000 '
+        if self.encode_audio:
+            ffmpeg_command += '-map 1:a -c:a aac -b:a 96k '
         
-        ffmpeg_command = 'ffmpeg  -y -f alsa -thread_queue_size 16 -ac 1 -ar 44100 -i dsnoop:1,0  -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 '
-        ffmpeg_command += '-muxdelay 0 -vcodec h264_omx -keyint_min 0 -g 10 -map 0:a -c:a aac -b:a 96k  -map 1:v -b:v 400k -video_track_timescale 9000 -f dash -seg_duration 1 '
-        ffmpeg_command += '-use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 '
+        ffmpeg_command += ' -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 '
         ffmpeg_command += self.ffmpeg_output_path
                  #+ self.dash_file_path
         
@@ -773,6 +793,14 @@ class CandlecamAPIHandler(APIHandler):
         
         if self.DEV:
             print(str(config))
+            
+            
+            
+            
+        if 'Use microphone' in config:
+            self.encode_audio = bool(config['Use microphone'])
+            if self.DEBUG:
+                print("-Encode audio preference was in config: " + str(self.DEBUG))
 
         if 'Debugging' in config:
             self.DEBUG = bool(config['Debugging'])
