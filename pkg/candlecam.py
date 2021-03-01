@@ -8,9 +8,11 @@ from __future__ import division
 #import logging
 import webthing
 from webthing import (SingleThing, Thing, Value, WebThingServer)
-#from webthing import Property as prop
+from webthing import Property as Prop
 import time
 import uuid
+
+import asyncio
 
 import socket
 import ifaddr
@@ -36,7 +38,8 @@ import base64
 import tornado.web
 
 try:
-    from gpiozero import Button
+    #from gpiozero import Button
+    import RPi.GPIO as GPIO # Import Raspberry Pi GPIO library
 except:
     print("Could not load gpiozero library")
 
@@ -145,7 +148,18 @@ class CandlecamAPIHandler(APIHandler):
             self.use_ramdrive = True
             self.ramdrive_created = False # it's only created is enough free memory is available (50Mb)
 
+            self.only_stream_on_button_press = False
             
+            self.button_state = Value(False)
+            self.streaming = Value(True)
+            
+            self.volume_level = 90
+            
+            self.loop = asyncio.get_event_loop()
+            asyncio.set_event_loop(self.loop)
+            self.pressed = False
+            self.pressed_sent = False
+            self.pressed_count = 30
             
             if self.DEBUG:
                 print("uname.machine:")
@@ -197,7 +211,7 @@ class CandlecamAPIHandler(APIHandler):
                             else:
                                 os.system('echo "gpu_mem=256" >> /boot/config.txt')
                                 
-                        self.send_pairing_prompt("Please reboot the device");
+                        self.adapter.send_pairing_prompt("Please reboot the device");
                     
                     #os.system('sudo raspi-config nonint do_camera 1')
                     #if self.armv6:
@@ -211,10 +225,10 @@ class CandlecamAPIHandler(APIHandler):
                     
                 elif 'detected=0' in check_camera_result:
                     print("Pi camera is supported, but was not detected")
-                    self.send_pairing_prompt("Make sure the camera is plugged in");
+                    self.adapter.send_pairing_prompt("Make sure the camera is plugged in");
                 else:
                     print("Pi camera seems good to go")
-                    self.send_pairing_prompt("Starting Candlecam");
+                    self.adapter.send_pairing_prompt("Starting Candlecam");
                     
             except Exception as ex:
                 print("Error checking if camera is enabled: " + str(ex))
@@ -239,12 +253,20 @@ class CandlecamAPIHandler(APIHandler):
                         
                     if 'thing_settings' not in self.persistent_data:
                         self.persistent_data['thing_settings'] = {}
+                    if 'ringtone_volume' not in self.persistent_data:
+                        self.persistent_data['ringtone_volume'] = 90
+                    if 'streaming' not in self.persistent_data:
+                        self.persistent_data['streaming'] = True
+                    if 'ringtone' not in self.persistent_data:
+                        self.persistent_data['ringtone'] = 'default'
+                        
+
                         
             except:
                 first_run = True
                 print("Could not load persistent data (if you just installed the add-on then this is normal)")
                 try:
-                    self.persistent_data = {'thing_settings':{}}
+                    self.persistent_data = {'streaming':True, 'ringtone_volume':90, 'ringtone':'default', 'thing_settings':{}}
                     self.save_persistent_data()
                 except Exception as ex:
                     print("Error creating initial persistence variable: " + str(ex))
@@ -298,6 +320,7 @@ class CandlecamAPIHandler(APIHandler):
         
         try:
             self.addon_path = os.path.join(self.user_profile['addonsDir'], self.addon_name)
+            #print("self.addon_path = " + str(self.addon_path))
             #self.persistence_file_folder = os.path.join(self.user_profile['configDir'])
             self.media_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name)
             self.media_photos_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name, 'photos')
@@ -308,6 +331,10 @@ class CandlecamAPIHandler(APIHandler):
             
             self.media_stream_dir_path = os.path.join(self.media_dir_path, 'stream')
             
+            #self.addon_sounds_dir_path = os.path.join(self.addon_path, 'audio', os.sep)
+            self.addon_sounds_dir_path = os.path.join(self.addon_path, 'sounds')
+            self.addon_sounds_dir_path = self.addon_sounds_dir_path + os.sep
+            
             self.dash_file_path = os.path.join(self.media_stream_dir_path, 'index.mpd')
             #self.dash_stream_url = 'http://' + self.own_ip + ':8080/extensions/candlecam/stream/index.mpd'
             self.m3u8_file_path = os.path.join(self.media_stream_dir_path, 'master.m3u8')
@@ -317,9 +344,11 @@ class CandlecamAPIHandler(APIHandler):
             self.ffmpeg_output_path = os.path.join( self.media_stream_dir_path,'index.mpd')
             #self.dash_file_path = os.path.join(self.addon_path, 'stream', 'index.mpd')
 
-            print("self.media_dir_path = " + str(self.media_dir_path))
-            print("self.media_photos_dir_path = " + str(self.media_photos_dir_path))
-            print("self.ffmpeg_output_path = " + str(self.ffmpeg_output_path))
+            if self.DEBUG:
+                print("self.media_dir_path = " + str(self.media_dir_path))
+                print("self.media_photos_dir_path = " + str(self.media_photos_dir_path))
+                print("self.ffmpeg_output_path = " + str(self.ffmpeg_output_path))
+                print("self.addon_sounds_dir_path = " + str(self.addon_sounds_dir_path))
             
         except Exception as ex:
             print("Failed to generate paths: " + str(ex))
@@ -466,24 +495,46 @@ class CandlecamAPIHandler(APIHandler):
         
 
         if self.DEBUG:
-            print("Starting the ffmpeg command")
+            print("Starting the ffmpeg thread")
         try:
-            # Restore the timers, alarms and reminders from persistence.
-            #if 'action_times' in self.persistent_data:
-            #    if self.DEBUG:
-            #        print("loading action times from persistence") 
-            #    self.persistent_data['action_times'] = self.persistent_data['action_times']
-            
             self.t = threading.Thread(target=self.ffmpeg) #, args=(self.voice_messages_queue,))
             self.t.daemon = True
             self.t.start()
+            
         except:
-            print("Error starting the clock thread")
+            print("Error starting the ffmpeg thread")
+        
+        
+        
+        if self.DEBUG:
+            print("Starting the GPIO thread")
+        try:
+            #self.g = threading.Thread(target=self.gpio_thread) #, args=(self.voice_messages_queue,))
+            #self.g.daemon = True
+            #self.g.start()
+            pass
+        except:
+            print("Error starting the GPIO thread")
+        
+        GPIO.setmode(GPIO.BCM) # Use BCM pin numbering
+        #GPIO.setup(17, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        GPIO.setup(17, GPIO.IN)
+        GPIO.add_event_detect(17, GPIO.RISING, callback=self.ding, bouncetime=400)
+        
+        
+        # button
+        #self.gpio_button = Button(17,bounce_time=1)
+
+        #self.gpio_button.when_pressed = self.ding
+        #self.gpio_button.when_released = self.dong
+        
+        
+
         
         
 
         self.thingy()
-
+        print("past creating thingy")
         
 
         
@@ -763,19 +814,89 @@ class CandlecamAPIHandler(APIHandler):
         
         #self.thing = make_thing()
         
-        self.button = Button(17)
 
-        self.button.when_pressed = self.ding_dong('ding')
-        button.when_released = self.ding_dong('dong')
+        
+        if self.DEBUG:
+            print("end of Candlecam init")
+        
+    #def ding_dong(self, state):
+    #    print("in ding_dong. State: " + str(state))
+    #    self.play_ringtone()
+    #    self.button_state.notify_of_external_update(state)
+        
+    ###
+    def ding(self, button):
+        print("in ding. Button:")
+        print(str(button))
+        #print(str(self.button_state))
+        self.pressed = True
+        self.pressed_count = 30
+        #loop = asyncio.new_event_loop()
+        #            asyncio.set_event_loop(loop)
+        #            return asyncio.get_event_loop()
+        #asyncio.get_event_loop().create_task(self.pressed())
+        
+        #return
+        #asyncio.run_coroutine_threadsafe(stop_loop(), self.loop)
+
+        #try:
+        #    pass
+        #except Exception as ex:
+        #    print("ding error: " + str(ex))
+    
+    #async def pressed(self):
+    #    try:
+    #        print("in pressed")
+    #        self.button_state.notify_of_external_update(True)
+    #        await time.sleep(2)
+    #        self.button_state.notify_of_external_update(False)
+    #    except CancelledError:
+    #        print("cancelled")
+            #pass
+    ###
+    
+    #def dong(self, button):
+    #    print("in dong")
+        #try:
+        #    
+        #except Exception as ex:
+        #    print("dong error: " + str(ex))
         
         
-        print("end of init")
+    """
+    def gpio_thread(self):
+        #GPIO.setwarnings(False) # Ignore warning for now
+        GPIO.setmode(GPIO.BCM) # Use BCM pin numbering
+        GPIO.setup(17, GPIO.IN, pull_up_down=GPIO.PUD_DOWN) # Set pin 17 to be an input pin and set initial value to be pulled low (off)
         
-    def ding_dong(self, state):
-        print("in ding_dong. State: " + str(state))
+        self.button_being_pressed = False
+        while True:
+            if GPIO.input(17) == GPIO.LOW and self.button_being_pressed == False:
+                self.button_being_pressed = True
+                print("Button was pushed!")
+                try:
+                    self.button_state.notify_of_external_update(True)
+                except Exception as ex:
+                    print("GPIO thread error: " + str(ex))
+                time.sleep(1)
+                
+            elif GPIO.input(17) == GPIO.HIGH and self.button_being_pressed == True:
+                print("Button was released!")
+                self.button_being_pressed = False
+                try:
+                    self.button_state.notify_of_external_update(False)
+                except Exception as ex:
+                    print("GPIO thread error: " + str(ex))
+                time.sleep(1)
+    """
+        
         
         
     def ffmpeg(self):
+        
+        
+        #if self.desired_ffmpeg_state != self.ffmpeg_state:
+            
         os.system('pkill ffmpeg')
         
         #os.system('ffmpeg -input_format yuyv422 -fflags nobuffer -vsync 0 -f video4linux2 -s 1280x720 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v h264_omx -r 10 -b:v 2M -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -f dash ' + self.dash_file_path + ' -remove_at_exit 1')
@@ -795,12 +916,15 @@ class CandlecamAPIHandler(APIHandler):
         
         # with audio:
         
-        print("encode_audio = " + str(self.encode_audio))
+        if self.DEBUG:
+            print("encode_audio = " + str(self.encode_audio))
           
         
-        ffmpeg_command = 'ffmpeg -y -re -f v4l2 -thread_queue_size 64 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 '
+        #ffmpeg_command = 'ffmpeg -y -re -f v4l2 -thread_queue_size 64 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 '
+        ffmpeg_command = 'ffmpeg -y -re -f v4l2 -fflags nobuffer -vsync 0 -thread_queue_size 16 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 '
+        
         if self.encode_audio:
-            ffmpeg_command += '-f alsa -thread_queue_size 64 -ac 1 -ar 44100 -i plughw:1,0 -map 1:a -c:a aac -b:a 96k '
+            ffmpeg_command += '-f alsa  -fflags nobuffer -thread_queue_size 16 -ac 1 -ar 44100 -i plughw:1,0 -map 1:a -c:a aac -b:a 96k '
         #ffmpeg_command += '-map 0:v -b:v 400k -video_track_timescale 9000 '
         #if self.encode_audio:
         #    ffmpeg_command += '-map 1:a -c:a aac -b:a 96k '
@@ -809,10 +933,11 @@ class CandlecamAPIHandler(APIHandler):
         ffmpeg_command += self.ffmpeg_output_path
                  #+ self.dash_file_path
         
-        print("calling ffmpeg command: " + str(ffmpeg_command))
+        if self.DEBUG:
+            print("running ffmpeg command: " + str(ffmpeg_command))
                  
-        #run_command(ffmpeg_command)     # -thread_queue_size 16
-        os.system(ffmpeg_command)
+        run_command(ffmpeg_command)     # -thread_queue_size 16
+        #os.system(ffmpeg_command)
         print("beyond run ffmpeg")
         
         # -muxdelay 0
@@ -836,12 +961,12 @@ class CandlecamAPIHandler(APIHandler):
         thing = Thing(
             'urn:dev:ops:candlecam-1234',
             'Candle cam',
-            ['VideoCamera'],
+            ['VideoCamera','OnOffSwitch','PushButton'],
             'Candlecam test description'
         )
 
         met = {'@type': 'VideoProperty',
-                        'title': 'Stream',
+                        'title': 'Video',
                         'type': 'null',
                         'description': 'Video stream',
                         'links':[
@@ -861,10 +986,109 @@ class CandlecamAPIHandler(APIHandler):
                         ]
                     }
         
-        #prop = Property.__init__(thing,'stream',Value(None),met)
         prop = webthing.Property(thing,'stream',Value(None),met)
-        print("propped")
+        if self.DEBUG:
+            print("added videoProperty")
         thing.add_property(prop)
+        
+        
+        # Enable or disable streaming
+        streaming_atype = None
+        button_atype = None
+        
+        if self.only_stream_on_button_press:
+            button_atype = 'OnOffProperty'
+        else:
+            streaming_atype = 'OnOffProperty'
+            
+        
+        thing.add_property(
+            webthing.Property(thing,
+                     'streaming',
+                     #Value(self.persistent_data['streaming'], lambda v: self.streaming_change(v)),
+                     Value(self.persistent_data['streaming'], self.streaming_change),
+                     metadata={
+                         '@type': streaming_atype,
+                         'title': 'Streaming',
+                         'type': 'boolean',
+                         'description': 'Whether video video (and audio) is streaming',
+                     }))
+                     
+                     
+        
+        thing.add_property(
+            Prop(thing,
+                     'button',
+                     self.button_state,
+                     metadata={
+                         '@type': 'PushedProperty',
+                         'title': 'Button',
+                         'type': 'boolean',
+                         'description': 'Whether video video (and audio) is streaming',
+                     }))
+                   
+        thing.add_property(
+            Prop(thing,
+                     'volume',
+                     Value(self.persistent_data['ringtone_volume'], lambda v: self.volume_change(v)),
+                     metadata={
+                         '@type': 'BrightnessProperty',
+                         'title': 'Doorbell volume',
+                         'type': 'integer',
+                         'description': 'The volume of the tone being played at the door itself',
+                         'minimum': 0,
+                         'maximum': 100,
+                         'unit': 'percent',
+                     }))
+                     
+        thing.add_property(
+            webthing.Property(thing,
+                     'ringtone',
+                     Value(self.persistent_data['ringtone'], lambda v: self.ringtone_change(v)),
+                     metadata={
+                         'title': 'Ringtone',
+                         'type': 'string',
+                         'description': 'The volume of the tone being played at the door itself',
+                         'enum':['default','classic','klingel','shop','fart']
+                     }))
+                     
+        if self.DEBUG:
+            print('starting the sensor update looping task')
+        self.button_timer = tornado.ioloop.PeriodicCallback(
+            self.update_button,
+            100
+        )
+        self.button_timer.start()
+        
+        
+        """
+        met = {'@type': 'OnOffProperty',
+                        'title': 'Stream',
+                        'type': 'boolean',
+                        'description': 'Stream video (and audio)',
+                        #'links': [{'href': '/things/lamp/properties/on'}]
+
+                    }
+        
+        prop = webthing.Property(thing,'stream',Value(None),met)
+        print("added videoPropperty")
+        thing.add_property(prop)
+        """
+
+        
+        """
+        # Todo: look into doorbell press event
+        thing.add_available_event(
+            'overheated',
+            {
+                'description':
+                'The lamp has exceeded its safe operating temperature',
+                'type': 'number',
+                'unit': 'degree celsius',
+            })
+        """
+        if self.DEBUG:
+            print("all thing properties added")
         
         more_routes = [
             #(r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}),
@@ -876,20 +1100,67 @@ class CandlecamAPIHandler(APIHandler):
             #(r"/static/(.*)", web.StaticFileHandler, {"path": "/var/www"}),
         ]
         
+        if self.DEBUG:
+            print("starting thing server (will block)")
         thing_server = WebThingServer(SingleThing(thing), port=8888, additional_routes=more_routes)
-        print("thing_server:")
-        print(str(dir(thing_server)))
+        #print("thing_server:")
+        #print(str(dir(thing_server)))
         thing_server.start()
-        print("thing server started")
+        if self.DEBUG:
+            print("thing server started")
         #while(True):
         #    sleep(1)
-        
 
 
     #def serve_file(self, path_args, *args, **kwargs):
-    def serve_file(self, var1, **kwargs):
-        print("in server_file")
-        print("path_args = " + str(var1))
+    #def serve_file(self, var1, **kwargs):
+    #    print("in server_file")
+    #    print("path_args = " + str(var1))
+
+
+    def update_button(self):
+        if self.pressed:
+            self.pressed = False
+            if self.pressed_sent == False:
+                self.pressed_sent = True
+                self.button_state.notify_of_external_update(True)
+                self.play_ringtone()
+                
+        elif self.pressed_sent == True:
+            if self.pressed_count > 0:
+                self.pressed_count -= 1
+            else:
+                self.pressed_sent = False
+                self.button_state.notify_of_external_update(False)
+
+    def volume_change(self,volume):
+        if self.DEBUG:
+            print("new volume: " + str(volume))
+        self.persistent_data['ringtone_volume'] = volume
+        self.save_persistent_data()
+        
+    def streaming_change(self,state):
+        if self.DEBUG:
+            print("new streaming state: " + str(state))
+        self.persistent_data['streaming'] = state
+        self.save_persistent_data()
+        
+    def ringtone_change(self,choice):
+        if self.DEBUG:
+            print("new ringtone choice: " + str(choice))
+        self.persistent_data['ringtone'] = choice
+        self.save_persistent_data()
+        self.play_ringtone()
+        
+    def play_ringtone(self):
+        # aplay can only handle .wav files
+        ringtone_command = 'aplay -D plughw:1,0 ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) + str(self.persistent_data['ringtone_volume'])+  '.wav'
+        #ringtone_command = 'SDL_AUDIODRIVER="alsa" AUDIODEV="hw:1,0" ffplay ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
+        #ringtone_command = 'ffplay -autoexit ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
+        
+        if self.DEBUG:
+            print("ringtone command: " + str(ringtone_command))
+        os.system(ringtone_command)
 
 
     # Read the settings from the add-on settings page
@@ -911,7 +1182,7 @@ class CandlecamAPIHandler(APIHandler):
             print("Error loading config from database")
             return
         
-        if self.DEV:
+        if self.DEBUG:
             print(str(config))
             
             
@@ -1185,7 +1456,9 @@ class CandlecamAPIHandler(APIHandler):
     def unload(self):
         if self.DEBUG:
             print("Shutting down")
+        
         os.system('pkill ffmpeg')
+        self.loop.stop()
         time.sleep(1)
         if self.ramdrive_created:
             os.system('sudo umount ' + self.media_stream_dir_path)
