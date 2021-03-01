@@ -36,10 +36,14 @@
       "properties": {
         "Interval": {
           "description": "How many seconds between changing to another random photo.",
-          "type": "string"
+          "type": "integer"
         },
         "Use microphone": {
-          "description": "Should audio also be recorded and transmitted? This is not compatible with Voco, since the microphone currently cannot be shared.",
+          "description": "Should audio also be recorded and transmitted? This may clash with other installed addons that also require access to the microphone, such as Voco.",
+          "type": "boolean"
+        },
+        "Use ramdrive": {
+          "description": "To save wear and tear of your SD card, a 50Mb ramdrive will be created if enough free memory (at least 80Mb) is available. Try disabling this if you are experiencing issues with stability (which a lack of memory can cause).",
           "type": "boolean"
         },
         "Contain": {
@@ -47,7 +51,7 @@
           "type": "boolean"
         },
         "Clock": {
-          "description": "Show the time on top of the photos.",
+          "description": "Show the time on top of the video.",
           "type": "boolean"
         },
         "Debug": {
