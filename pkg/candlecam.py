@@ -142,9 +142,86 @@ class CandlecamAPIHandler(APIHandler):
             self.own_ip = get_ip()
             
             self.encode_audio = False
+            self.use_ramdrive = True
+            self.ramdrive_created = False # it's only created is enough free memory is available (50Mb)
+
+            
+            
+            if self.DEBUG:
+                print("uname.machine:")
+            #print(str(os.uname()['machine']))
+            
+            self.armv6 = False # indication that this is a Raspberry Pi Zero.
+            for varname in os.uname():
+                if self.DEBUG:
+                    print(varname)
+                if 'armv6' in varname:
+                    if self.DEBUG:
+                        print("armv6 spotted")
+                    self.armv6 = True
+                  
 
 
-            print("self.adapter.persistence_file_path = " + str(self.adapter.persistence_file_path))
+            # Raspi config commands:
+            # https://raspberrypi.stackexchange.com/questions/28907/how-could-one-automate-the-raspbian-raspi-config-setup
+
+            self.camera_available = False
+
+            try:
+                check_camera_enabled_command = '/opt/vc/bin/vcgencmd get_camera'
+                check_camera_result = run_command(check_camera_enabled_command)
+                if 'supported=0' in check_camera_result:
+                    print("Pi camera does not seem to be supported. Enabling it now.")
+                    #os.system('sudo raspi-config nonint do_i2c 1')
+
+                    with open("/boot/config.txt", "r") as file:
+                        os.system('cp /boot/config.txt /boot/config.bak')
+                        #for line in file:
+                        #    print (line.split("'")[1])
+                        
+                        print("modifying /boot/config.txt, and creating .bak backup copy")
+                        if 'start_x' in file:
+                            os.system('sudo sed -i "s/start_x=0/start_x=1/g" /boot/config.txt')
+                        else:
+                            
+                            os.system('echo "start_x=1" >> /boot/config.txt')
+                            
+                        if self.armv6:
+                            if 'gpu_mem' in file:
+                                os.system("sed -i 's/^\(gpu_mem=\).*/\1128/' /boot/config.txt")
+                            else:
+                                os.system('echo "gpu_mem=128" >> /boot/config.txt')
+                        else:
+                            if 'gpu_mem' in file:
+                                os.system("sed -i 's/^\(gpu_mem=\).*/\1256/' /boot/config.txt")
+                            else:
+                                os.system('echo "gpu_mem=256" >> /boot/config.txt')
+                                
+                        self.send_pairing_prompt("Please reboot the device");
+                    
+                    #os.system('sudo raspi-config nonint do_camera 1')
+                    #if self.armv6:
+                    #    if self.DEBUG:
+                    #        print("Setting Pi GPU memory to 128")
+                    #    os.system('sudo raspi-config nonint do_memory_split 128') # pi zero
+                    #else:
+                    #    if self.DEBUG:
+                    #        print("Setting Pi GPU memory to 256")
+                    #    os.system('sudo raspi-config nonint do_memory_split 256') # normal pi
+                    
+                elif 'detected=0' in check_camera_result:
+                    print("Pi camera is supported, but was not detected")
+                    self.send_pairing_prompt("Make sure the camera is plugged in");
+                else:
+                    print("Pi camera seems good to go")
+                    self.send_pairing_prompt("Starting Candlecam");
+                    
+            except Exception as ex:
+                print("Error checking if camera is enabled: " + str(ex))
+                
+
+            if self.DEBUG:
+                print("self.adapter.persistence_file_path = " + str(self.adapter.persistence_file_path))
         
             # Get persistent data
             self.persistence_file_path = self.adapter.persistence_file_path
@@ -171,9 +248,6 @@ class CandlecamAPIHandler(APIHandler):
                     self.save_persistent_data()
                 except Exception as ex:
                     print("Error creating initial persistence variable: " + str(ex))
-        
-        
-        
         
         
         
@@ -215,18 +289,21 @@ class CandlecamAPIHandler(APIHandler):
         except Exception as e:
             print("Failed to init UX extension API handler: " + str(e))
         
-        #print("_ _ _ ")
-        #print("self.user_profile = " + str(self.user_profile))
-        #print("")
+        if self.DEBUG:
+            print("_ _ _ ")
+            print("self.user_profile = " + str(self.user_profile))
+            print("")
+        
+        
         
         try:
             self.addon_path = os.path.join(self.user_profile['addonsDir'], self.addon_name)
             #self.persistence_file_folder = os.path.join(self.user_profile['configDir'])
             self.media_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name)
-            self.photos_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name, 'photos')
-            self.addon_photos_dir_path = os.path.join(self.addon_path, 'photos')
-            self.addon_stream_dir_path = os.path.join(self.addon_path, 'stream')
-            self.photo_file_path = os.path.join(self.addon_path, 'photos', 'latest.jpg')
+            self.media_photos_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name, 'photos')
+            #self.addon_photos_dir_path = os.path.join(self.addon_path, 'photos')
+            #self.addon_stream_dir_path = os.path.join(self.addon_path, 'stream')
+            self.photos_file_path = os.path.join(self.addon_path, 'photos', 'latest.jpg')
             #self.photo_file_path = os.path.join(self.photos_dir_path,'latest.jpg')
             
             self.media_stream_dir_path = os.path.join(self.media_dir_path, 'stream')
@@ -240,38 +317,81 @@ class CandlecamAPIHandler(APIHandler):
             self.ffmpeg_output_path = os.path.join( self.media_stream_dir_path,'index.mpd')
             #self.dash_file_path = os.path.join(self.addon_path, 'stream', 'index.mpd')
 
-            
-            print("self.photo_file_path = " + str(self.photo_file_path))
+            print("self.media_dir_path = " + str(self.media_dir_path))
+            print("self.media_photos_dir_path = " + str(self.media_photos_dir_path))
             print("self.ffmpeg_output_path = " + str(self.ffmpeg_output_path))
             
-        except Exception as e:
-            print("Failed to make paths: " + str(e))
+        except Exception as ex:
+            print("Failed to generate paths: " + str(ex))
+            
             
         try:
+            print("mediaDir = " + str(self.user_profile['mediaDir']))
             
-            if not os.path.isdir( self.addon_photos_dir_path ):
-                print(self.addon_photos_dir_path + " directory did not exist yet, creating it now")
-                os.mkdir( self.addon_photos_dir_path )
+            media_dir = str(self.user_profile['mediaDir'])
+            if not os.path.isdir( media_dir ):
+                print( media_dir + " directory did not exist yet, creating it now")
+                os.mkdir( media_dir )
+        except Exception as ex:
+            print("Error making media directory: " + str(ex))
             
-            if not os.path.isdir( self.addon_stream_dir_path ):
-                print(self.addon_stream_dir_path + " directory did not exist yet, creating it now")
-                os.mkdir( self.addon_stream_dir_path )
             
+        try:   
+            print("self.media_dir_path = " + str(self.media_dir_path) )
             if not os.path.isdir( self.media_dir_path ):
-                print(self.media_dir_path + " directory did not exist yet, creating it now")
+                print( str(self.media_dir_path) + " directory did not exist yet, creating it now")
                 os.mkdir( self.media_dir_path )
-            
-            if not os.path.isdir( self.photos_dir_path ):
-                print(self.photos_dir_path + " directory did not exist yet, creating it now")
-                os.mkdir( self.photos_dir_path )
                 
+        except Exception as ex:
+            print("Error making media/candlecam directory: " + str(ex))
+                
+        try:
+                
+            #print("self.addon_photos_dir_path = " + str(self.addon_photos_dir_path) )
+            #if not os.path.isdir( self.addon_photos_dir_path ):
+            #    print(self.addon_photos_dir_path + " directory did not exist yet, creating it now")
+            #    os.mkdir( self.addon_photos_dir_path )
+            
+            #print("self.addon_stream_dir_path = " + str(self.addon_stream_dir_path) )
+            #if not os.path.isdir( self.addon_stream_dir_path ):
+            #    print(self.addon_stream_dir_path + " directory did not exist yet, creating it now")
+            #    os.mkdir( self.addon_stream_dir_path )
+            
+            print("self.photos_dir_path = " + str(self.media_photos_dir_path) )
+            if not os.path.isdir( self.media_photos_dir_path ):
+                print(self.media_photos_dir_path + " directory did not exist yet, creating it now")
+                os.mkdir( self.media_photos_dir_path )
+                
+        except Exception as ex:
+            print("Error making photos directory: " + str(ex))
+            
+            
+        try:    
             if not os.path.isdir( self.media_stream_dir_path ):
-                print(self.self.media_stream_dir_path + " directory did not exist yet, creating it now")
+                print(self.media_stream_dir_path + " directory did not exist yet, creating it now")
                 os.mkdir( self.media_stream_dir_path )
             
         except Exception as ex:
-            print("Error making photos directory: " + str(ex))
+            print("Error making stream directory: " + str(ex))
                 
+            
+        
+        # Create ramdisk for dash files (to prevent wear on SD card)
+        self.available = 0
+        if self.use_ramdrive:
+            
+            ram_data = run_command('grep ^MemFree /proc/meminfo')
+            #ram_data = filter(ram_data.isdigit, ram_data)
+            ram_data = int(''.join(filter(str.isdigit, ram_data)))
+            #ram_data = int(s) for s in ram_data.split() if s.isdigit()
+            if self.DEBUG:
+                print("freemem: " + str(ram_data))
+            if ram_data > 80000:
+                if self.DEBUG:
+                    print("Enough free memory, so creating ramdrive")
+                os.system('sudo mount -t tmpfs -o size=50m candlecam_ramdrive ' + self.media_stream_dir_path)
+                self.ramdrive_created = True
+            
             
         # Respond to gateway version
         try:
@@ -676,23 +796,23 @@ class CandlecamAPIHandler(APIHandler):
         # with audio:
         
         print("encode_audio = " + str(self.encode_audio))
-        ffmpeg_command = 'ffmpeg  -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 '
-        ffmpeg_command += '-muxdelay 0 -vcodec h264_omx -keyint_min 0 -g 10 '
-        if self.encode_audio:
-            ffmpeg_command += '-f alsa -thread_queue_size 16 -ac 1 -ar 44100 -i dsnoop:1,0 '
-        ffmpeg_command += '-map 0:v -b:v 400k -video_track_timescale 9000 '
-        if self.encode_audio:
-            ffmpeg_command += '-map 1:a -c:a aac -b:a 96k '
+          
         
-        ffmpeg_command += ' -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 '
+        ffmpeg_command = 'ffmpeg -y -re -f v4l2 -thread_queue_size 64 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 '
+        if self.encode_audio:
+            ffmpeg_command += '-f alsa -thread_queue_size 64 -ac 1 -ar 44100 -i plughw:1,0 -map 1:a -c:a aac -b:a 96k '
+        #ffmpeg_command += '-map 0:v -b:v 400k -video_track_timescale 9000 '
+        #if self.encode_audio:
+        #    ffmpeg_command += '-map 1:a -c:a aac -b:a 96k '
+        
+        ffmpeg_command += '-map 0:v -video_track_timescale 900000 -vcodec h264_omx -b:v 400k -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 '
         ffmpeg_command += self.ffmpeg_output_path
                  #+ self.dash_file_path
         
         print("calling ffmpeg command: " + str(ffmpeg_command))
                  
-                 
-        run_command(ffmpeg_command)     # -thread_queue_size 16
-        #os.system(ffmpeg_command)
+        #run_command(ffmpeg_command)     # -thread_queue_size 16
+        os.system(ffmpeg_command)
         print("beyond run ffmpeg")
         
         # -muxdelay 0
@@ -802,15 +922,16 @@ class CandlecamAPIHandler(APIHandler):
             if self.DEBUG:
                 print("-Encode audio preference was in config: " + str(self.DEBUG))
 
-        if 'Debugging' in config:
-            self.DEBUG = bool(config['Debugging'])
-            if self.DEBUG:
-                print("-Debugging preference was in config: " + str(self.DEBUG))
 
-        if 'Interval' in config:
-            self.interval = int(config['Interval'])
+        if 'Use ramdrive' in config:
+            self.use_ramdrive = bool(config['Use ramdrive'])
             if self.DEBUG:
-                print("-Interval preference was in config: " + str(self.interval))
+                print("-Use ramdrive preference was in config: " + str(self.DEBUG))
+
+        #if 'Interval' in config:
+        #    self.interval = int(config['Interval'])
+        #    if self.DEBUG:
+        #        print("-Interval preference was in config: " + str(self.interval))
 
         if 'Contain' in config:
             self.contain = bool(config['Contain'])
@@ -818,10 +939,14 @@ class CandlecamAPIHandler(APIHandler):
                 print("-Contain photo preference was in config: " + str(self.contain))
 
         if 'Clock' in config:
-            self.clock = int(config['Clock'])
+            self.clock = bool(config['Clock'])
             if self.DEBUG:
                 print("-Clock preference was in config: " + str(self.clock))
 
+        if 'Debugging' in config:
+            self.DEBUG = bool(config['Debugging'])
+            if self.DEBUG:
+                print("-Debugging preference was in config: " + str(self.DEBUG))
 
 
 
@@ -855,7 +980,7 @@ class CandlecamAPIHandler(APIHandler):
                                 return APIResponse(
                                   status=200,
                                   content_type='application/json',
-                                  content=json.dumps({'state' : True, 'message' : 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
+                                  content=json.dumps({'state': True, 'own_ip': self.own_ip, 'message': 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
                                 )
                                 
                             elif action == 'save_settings':
@@ -1060,6 +1185,13 @@ class CandlecamAPIHandler(APIHandler):
     def unload(self):
         if self.DEBUG:
             print("Shutting down")
+        os.system('pkill ffmpeg')
+        time.sleep(1)
+        if self.ramdrive_created:
+            os.system('sudo umount ' + self.media_stream_dir_path)
+        if self.DEBUG:
+            print("candlecam ramdrive unmounted")
+        
 
 
 
