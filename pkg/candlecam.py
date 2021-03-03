@@ -5,137 +5,49 @@ from __future__ import division
 #from webthing import (Action, Event, Property, SingleThing, Thing, Value, WebThingServer)
 #import webthings.Property as Property2
 
+import re
 import io
 import os
+import sys
 import time
+from time import sleep, mktime
+import uuid
+import json
+
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib'))
 
 os.system('pkill ffmpeg') #TODO DEBUG TEMPORARY
 
-import subprocess
+import base64
+import socket
+import ifaddr
+import asyncio
 
-#subprocess.Popen('pgrep','pigpiod')
-
-"""
-def run_command(cmd, timeout_seconds=20):
-    try:
-        
-        p = subprocess.run(cmd, timeout=timeout_seconds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, universal_newlines=True)
-
-        if p.returncode == 0:
-            return p.stdout # + '\n' + "Command success" #.decode('utf-8')
-            #yield("Command success")
-        else:
-            if p.stderr:
-                return "Error: " + str(p.stderr) # + '\n' + "Command failed"   #.decode('utf-8'))
-
-    except Exception as e:
-        print("Error running command: "  + str(e))
-        
-"""
-
-#os.system('export PIGPIO_PORT=9999')
-#os.system('sudo ./pigpiod -l -p 9999')
-
-#os.system('export PIGPIO_PORT=9999')
-
-#pigpio_running = subprocess.check_output(['pgrep','pigpiod'])
-#pigpio_running = pigpio_running.decode('utf-8')
-#print(str(pigpio_running))
-#if str(pigpio_running) == 'None':
-#    print("pigpio wasn't already running, starting it now")
-#    subprocess.Popen(['sudo','./pigpiod','-l'])
-
-
-import re
-import sys
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib'))
-#from os import listdir
-#from os.path import isfile, join
-
-
-#import logging
 import webthing
 from webthing import (SingleThing, Thing, Value, WebThingServer)
 from webthing import Property as Prop
 
-import uuid
-
-import asyncio
-
-import socket
-import ifaddr
-
-import functools
-import json
-
-
-from time import sleep, mktime
 import datetime
-
 import threading
-#from threading import Condition
-#import requests
-import base64
-#from pynput.keyboard import Key, Controller
-
+import functools
+import subprocess
 import tornado.web
 
 try:
-    #from gpiozero import Button
-#    import pigpio
     from apa102 import APA102
-    
 except:
     print("Could not load APA201 LED lights library")
     
 try:
-    import RPi.GPIO as GPIO # Import Raspberry Pi GPIO library
-    #from gpiozero.pins.native import NativeFactory
-    #from gpiozero import Servo, Button, AngularServo
-    #from gpiozero.pins.pigpio import PiGPIOFactory
+    import RPi.GPIO as GPIO
 except Exception as ex:
     print("Could not load gpiozero library: " + str(ex))
 
 
 try:
-    #from picamera import PiCamera
-    #import picamera
-    #import logging
-    #import socketserver
-    #from wsgiref.handlers import format_date_time
-    #from datetime import datetime
-    #from threading import Condition
-    #import http 
-    #from http import server
     from gateway_addon import Database, Adapter, APIHandler, APIResponse
-    
-    #from zeroconf import ServiceInfo, Zeroconf
-    
-    #import http.server as server
-    print("libraries loaded")
-    #print(str(server))
 except:
     print("Could not load gateway addon library")
-
-
-
-#try:
-    #from gateway_addon import APIHandler, APIResponse #, Database, Adapter, Device, Property
-    
-    #print("succesfully loaded APIHandler and APIResponse from gateway_addon")
-#except:
-#    print("Import APIHandler and APIResponse from gateway_addon failed. Use at least WebThings Gateway version 0.10")
-
-#try:
-    #from .candlecam_adapter import *
-#    pass
-#except Exception as ex:
-#    print("Error loading candlecam_adapter: " + str(ex))
-    
-#try:
-#    from gateway_addon import Adapter, Device, Database
-#except:
-#    print("Gateway not loaded?!")
 
 print = functools.partial(print, flush=True)
 
@@ -149,8 +61,6 @@ _CONFIG_PATHS = [
 if 'WEBTHINGS_HOME' in os.environ:
     _CONFIG_PATHS.insert(0, os.path.join(os.environ['WEBTHINGS_HOME'], 'config'))
 
-
-#candlecam_adapter_running = True
 
 
 class CandlecamAPIHandler(APIHandler):
@@ -362,7 +272,10 @@ class CandlecamAPIHandler(APIHandler):
                         self.persistent_data['streaming'] = True
                     if 'ringtone' not in self.persistent_data:
                         self.persistent_data['ringtone'] = 'default'
-
+                    if 'led_brightness' not in self.persistent_data:
+                        self.persistent_data['led_brightness'] = 50
+                    if 'led_color' not in self.persistent_data:
+                        self.persistent_data['led_color'] = "#ff0000"
                         
             except:
                 first_run = True
@@ -397,24 +310,22 @@ class CandlecamAPIHandler(APIHandler):
                     '{}:{}'.format(self.hostname, self.webthing_port),
                 ])
             
-            
-            
-                
-            # LOAD CONFIG
-            try:
-                self.add_from_config()
-            except Exception as ex:
-                print("Error loading config: " + str(ex))
-
-            
-            if self.DEBUG:
-                print("self.manager_proxy = " + str(self.manager_proxy))
-                print("Created new API HANDLER: " + str(manifest['id']))
+            #if self.DEBUG:
+            #    print("self.manager_proxy = " + str(self.manager_proxy))
+            #    print("Created new API HANDLER: " + str(manifest['id']))
         
         except Exception as e:
             print("Failed to init UX extension API handler: " + str(e))
         
         
+        # LOAD CONFIG
+        try:
+            self.add_from_config()
+        except Exception as ex:
+            print("Error loading config: " + str(ex))
+        
+        
+        # PATHS & DIRECTORIES
         try:
             self.addon_path = os.path.join(self.user_profile['addonsDir'], self.addon_name)
             self.media_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name)
@@ -519,7 +430,8 @@ class CandlecamAPIHandler(APIHandler):
         
 
     def ding(self, button):
-        print("in ding.")
+        if self.DEBUG:
+            print("in ding.")
         self.pressed = True
         self.pressed_count = 30
         return
@@ -744,7 +656,6 @@ class CandlecamAPIHandler(APIHandler):
                 self.pressed_count -= 1
                 if self.DEBUG:
                     print(str(self.pressed_count))
-                
             else:
                 self.pressed_sent = False
                 self.button_state.notify_of_external_update(False)
@@ -772,7 +683,6 @@ class CandlecamAPIHandler(APIHandler):
             
             try:
                 self.pwm.ChangeDutyCycle(99)
-                
                 if self.DEBUG:
                     print("set servo to min")
             except Exception as ex:
@@ -798,7 +708,6 @@ class CandlecamAPIHandler(APIHandler):
 
             try:                
                 self.pwm.ChangeDutyCycle(1)
-                
                 if self.DEBUG:
                     print("set servo to max")
             except Exception as ex:
@@ -843,7 +752,8 @@ class CandlecamAPIHandler(APIHandler):
         try:
             hex = hex.lstrip('#')
             rgb = tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))
-            print('RGB =', str(rgb))
+            if self.DEBUG:
+                print('RGB =', str(rgb))
         
             r = rgb[0]
             g = rgb[1]
@@ -861,14 +771,14 @@ class CandlecamAPIHandler(APIHandler):
         if self.DEBUG:
             print("setting brightness to: " + str(brightness) + "%")
           
-        print(dir(self.lights))
+        #print(dir(self.lights))
           
         try:  
             brightness = brightness / 100 # requires values between 0 and 1
             
-            self.lights.global_brightness(0,brightness)
-            self.lights.global_brightness(1,brightness)
-            self.lights.global_brightness(2,brightness)
+            self.lights.set_brightness(0,brightness)
+            self.lights.set_brightness(1,brightness)
+            self.lights.set_brightness(2,brightness)
             self.lights.show()
         except Exception as ex:
             print("could not set LED brightness: " + str(ex))
