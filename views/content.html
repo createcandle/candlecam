@@ -1,7 +1,6 @@
 <div id="extension-candlecam-content">
   
     <div id="extension-candlecam-content-container">
-
         
         
         <div id="extension-candlecam-picture-holder">
@@ -11,8 +10,10 @@
                    controls autoplay></video>
                    
             <div id="extension-candlecam-main-buttons-container">
-                <button id="extension-candlecam-door-release-button" class="icon-button" data-l10n-id="door-release-button" aria-label="Open door"></button>
-                <button id="extension-candlecam-door-close-button" class="icon-button" data-l10n-id="door-close-button" aria-label="Close door"></button>
+                <div id="extension-candlecam-main-door-buttons-container" class="extension-candlecam-hidden">
+                    <button id="extension-candlecam-door-release-button" class="icon-button" data-l10n-id="door-release-button" aria-label="Open door"></button>
+                    <button id="extension-candlecam-door-close-button" class="icon-button" data-l10n-id="door-close-button" aria-label="Close door"></button>
+                </div>
             </div>
                    
             <div id="extension-candlecam-clock-container"><div id="extension-candlecam-clock"></div></div>
@@ -35,7 +36,7 @@
         </div>
         
         
-        <div id="extension-candlecam-settings-container" class="extension-candlecam-hiddenX">
+        <div id="extension-candlecam-settings-container" class="extension-candlecam-hidden">
             
             <h2>Settings</h2>
             <p>Here you can select which devices should work together to form a smart doorbell system.</p>
