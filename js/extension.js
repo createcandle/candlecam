@@ -187,16 +187,16 @@
                         //for (let prop in property_lists['property1_list']){
                         for (var i = 0; i < property_lists['property1_list'].length; i++) {
         				//if(property_lists['property1_list'].length > 0){
-        					console.log(i);
+        					//console.log(i);
                             //console.log("adding thing to source list because it has a video Property");
                             var selected_state = false;
                             if(this.thing_settings != null){
                                 //console.log("thing settings existed in body");
                                 //if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
-                                console.log("this.thing_settings['camera_source_thing_id'] = " + this.thing_settings['camera_source_thing_id'] );
-                                console.log("=?= thing_id = " + thing_id);
+                                //console.log("this.thing_settings['camera_source_thing_id'] = " + this.thing_settings['camera_source_thing_id'] );
+                                //console.log("=?= thing_id = " + thing_id);
                                 if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
-                                    console.log("setting option as selected");
+                                    //console.log("setting option as selected");
                                     selected_state = true;
                                 }
                             }
@@ -215,7 +215,7 @@
                                 //console.log("thing settings existed in body");
                                 //if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
                                 if(thing_id == this.thing_settings['push_button_thing_id']  && property_lists['property1_system_list'][i] == this.thing_settings['push_button_property_id']){
-                                    console.log("setting option as selected");
+                                    //console.log("setting option as selected");
                                     selected_state = true;
                                 }
                             }
@@ -232,12 +232,12 @@
                             var selected_state = false;
                             if(this.thing_settings != null){
                                 //console.log("thing settings existed in body");
-                                console.log("_");
-                                console.log(property_lists['property1_system_list'][i]);
-                                console.log(this.thing_settings['door_release_property_id']);
+                                //console.log("_");
+                                //console.log(property_lists['property1_system_list'][i]);
+                                //console.log(this.thing_settings['door_release_property_id']);
                                 //if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
                                 if(thing_id == this.thing_settings['door_release_thing_id']  && property_lists['property1_system_list'][i] == this.thing_settings['door_release_property_id']){
-                                    console.log("setting option as selected");
+                                    //console.log("setting option as selected");
                                     selected_state = true;
                                 }
                             }
@@ -259,7 +259,7 @@
 	    
         
         
-            const manifestUri = '/media/candlecam/index.mpd';
+            //const manifestUri = '/media/candlecam/index.mpd';
 
             function initApp() {
               // Install built-in polyfills to patch browser incompatibilities.
@@ -289,9 +289,20 @@
                 streaming: {
                   bufferingGoal: 0,
                   rebufferingGoal: 0,
-                  bufferBehind:0
+                  bufferBehind:0,
+                  jumpLargeGaps:true,
                 }
+                /*
+                ,
+                retryParameters:{
+                    timeout: 0,
+                    maxAttempts: 1000,
+                }
+                */
               });
+              
+              player.configure('manifest.dash.ignoreMinBufferTime', true);
+              
           
               player.getNetworkingEngine().registerRequestFilter((type, request) => {
                       request.headers = {
@@ -308,6 +319,7 @@
 
               // Try to load a manifest.
               // This is an asynchronous process.
+              /*
               try {
                 await player.load(manifestUri);
                 // This runs if the asynchronous load is successful.
@@ -316,6 +328,7 @@
                 // onError is executed if the asynchronous load fails.
                 onError(e);
               }
+              */
             }
 
             function onErrorEvent(event) {
@@ -376,7 +389,7 @@
             // Settings toggle
 		
             document.getElementById("extension-candlecam-settings-button").addEventListener('click', () => {
-    			console.log("click");
+    			//console.log("click");
                 event.stopImmediatePropagation();
     			const settings_view = document.getElementById('extension-candlecam-settings-container');
     			//const overview = document.getElementById('extension-candlecam-overview');
@@ -389,8 +402,8 @@
                     const push_button_select = document.getElementById('extension-candlecam-push-button-select');
                     const door_release_select = document.getElementById('extension-candlecam-door-release-select');
         
-                    console.log("push_button_select.value = " + push_button_select.value);
-                    console.log("door_release_select.value = " + door_release_select.value);
+                    //console.log("push_button_select.value = " + push_button_select.value);
+                    //console.log("door_release_select.value = " + door_release_select.value);
         
                     this.thing_settings['camera_source_thing_id'] = camera_source_select.value.split("_____")[0];
                     this.thing_settings['camera_source_property_id'] = camera_source_select.value.split("_____")[1];
@@ -409,8 +422,8 @@
                         {'action':'save_settings','thing_settings':this.thing_settings}
 
         	        ).then((body) => {
-        	  			console.log("save settings returned:");
-        	  			console.log(body);
+        	  			//console.log("save settings returned:");
+        	  			//console.log(body);
         	        }).catch((e) => {
         	        	//pre.innerText = e.toString();
         	  			console.log("Candlecam: error saving settings: " + e.toString());
@@ -546,6 +559,8 @@
     			console.log("Could not clear keep awake interval");
     			console.log(e); //logMyErrors(e); // pass exception object to error handler
     		}
+            
+            this.view.innerHTML = "";
     	}
 
 
@@ -558,7 +573,7 @@
             console.log("Generating UI");
             //console.log("this.push_button_thing_id: " + this.push_button_thing_id);
         
-            console.log(this.all_things);
+            //console.log(this.all_things);
         
             const things = this.all_things;
         
@@ -578,25 +593,25 @@
                 if(things[key]['href'] == '/things/' + this.thing_settings.camera_source_thing_id){
                     console.log("bingo1");
                     for (let prop in things[key]['properties']){
-                        console.log(prop);
-                        console.log(things[key]['properties'][prop]['name']);
-                        console.log(this.camera_source_property_id);
+                        //console.log(prop);
+                        //console.log(things[key]['properties'][prop]['name']);
+                        //console.log(this.camera_source_property_id);
                         if(things[key]['properties'][prop]['name'] == this.thing_settings.camera_source_property_id){
-                            console.log("bingo");
+                            console.log("bingo2");
                             for (var i = 0; i < things[key]['properties'][prop]['links'].length; i++) {
                                 if(things[key]['properties'][prop]['links'][i]['rel'] == 'alternate'){
                                     //if(things[key]['properties'][prop]['links'][i]['mediaType'] == 'application/dash+xml'){
                                         try {
                                             console.log("loading video: " + things[key]['properties'][prop]['links'][i]['href']);
                                         
-                                            await player.load( things[key]['properties'][prop]['links'][i]['href'] +'?jwt=' + API.jwt );
+                                            await window.player.load( things[key]['properties'][prop]['links'][i]['href'] +'?jwt=' + API.jwt );
                                             // This runs if the asynchronous load is successful.
-                                            console.log('- The video has now been loaded!');
+                                            //console.log('- The video has now been loaded!');
                                             break;
                                         } catch (e) {
                                             console.log('- Loading video failed');
                                             // onError is executed if the asynchronous load fails.
-                                            console.log(e);
+                                            //console.log(e);
                                         }
                                     //}
                                 } 
@@ -607,6 +622,20 @@
                 }
             
             }
+            
+            // Show or hide door control buttons
+            console.log("door buttons check");
+            console.log(this.thing_settings.door_release_property_id);
+            const door_buttons_container = document.getElementById('extension-candlecam-main-door-buttons-container');
+            if(this.thing_settings.door_release_property_id == null){
+                console.log("add hidden class");
+                this.addClass(door_buttons_container,'extension-candlecam-hidden');
+            }
+            else{
+                console.log("remove hidden class");
+                this.removeClass(door_buttons_container,'extension-candlecam-hidden');
+            }
+            
         
         }
 
