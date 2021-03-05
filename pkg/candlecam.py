@@ -9,14 +9,14 @@ import re
 import io
 import os
 import sys
+
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib'))
+
 import time
 from time import sleep, mktime
 import uuid
 import json
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib'))
-
-os.system('pkill ffmpeg') #TODO DEBUG TEMPORARY
 
 import base64
 import socket
@@ -29,19 +29,27 @@ from webthing import Property as Prop
 
 import datetime
 import threading
+from threading import Condition
 import functools
 import subprocess
 import tornado.web
+import tornado.gen
 
-try:
-    from apa102 import APA102
-except:
-    print("Could not load APA201 LED lights library")
-    
-try:
-    import RPi.GPIO as GPIO
-except Exception as ex:
-    print("Could not load gpiozero library: " + str(ex))
+import picamera
+
+if os.path.isdir("/etc/voicecard"):
+
+    try:
+        import RPi.GPIO as GPIO
+    except Exception as ex:
+        print("Could not load gpiozero library: " + str(ex))
+
+    try:
+        #from apa102 import APA102
+        from .apa102 import APA102
+        #from .apa import APA102
+    except:
+        print("Could not load APA201 LED lights library")
 
 
 try:
@@ -62,6 +70,10 @@ if 'WEBTHINGS_HOME' in os.environ:
     _CONFIG_PATHS.insert(0, os.path.join(os.environ['WEBTHINGS_HOME'], 'config'))
 
 
+global _loop, candlecammy, new_frame, frame
+#_loop = None
+candlecammy = None
+frame = None
 
 class CandlecamAPIHandler(APIHandler):
     """Power settings API handler."""
@@ -98,7 +110,10 @@ class CandlecamAPIHandler(APIHandler):
             
             self.interval = 30
             self.contain = 1
-
+            
+            self.respeaker = False # Is a ReSPeaker 2 mic hat installed?
+            if os.path.isdir("/etc/voicecard"):
+                self.respeaker = True
             
             self.clock = False
         
@@ -122,56 +137,47 @@ class CandlecamAPIHandler(APIHandler):
             
             self.pressed = False
             self.pressed_sent = False
-            self.pressed_count = 30
+            self.pressed_countdown_time = 60 #1200 # 1200 = 2 minutes
+            self.pressed_countdown = self.pressed_countdown_time
             
             self.button_pin = 17
             self.servo_pin = 13
+            
+            self.terminated = False
             
         except Exception as ex:
             print("Failed in first part of init: " + str(ex))
             
             
-        try:
-            print(" - - LIGHTS - -")
-            #self.lights = APA102(3, 10, 11, 8)
-            
-            self.lights = APA102(3) #14,15,None,0.5
-            print(str(self.lights))
-            
-            self.led_color('00ff00')
-            self.led_brightness(10)
-            
-        except Exception as ex:
-            print("Failed in LED setup: " + str(ex))
-           
+        self.kill_ffmpeg()
+
             
         try: 
+            if self.respeaker:
+                
+                # Button (pin 17)
+                GPIO.setmode(GPIO.BCM) # Use BCM pin numbering
+                GPIO.setup(self.button_pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                #GPIO.setup(17, GPIO.IN)
+                GPIO.add_event_detect(self.button_pin, GPIO.RISING, callback=self.ding, bouncetime=400)
             
-            # Button (pin 17)
-            
-            GPIO.setmode(GPIO.BCM) # Use BCM pin numbering
-            GPIO.setup(self.button_pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-            #GPIO.setup(17, GPIO.IN)
-            GPIO.add_event_detect(self.button_pin, GPIO.RISING, callback=self.ding, bouncetime=400)
-            
-            # https://www.mbtechworks.com/projects/raspberry-pi-pwm.html
+                # https://www.mbtechworks.com/projects/raspberry-pi-pwm.html
             
             
             
-            # servo (pin 13)
+                # servo (pin 13)
+                GPIO.setup(self.servo_pin, GPIO.OUT)
+                self.pwm = GPIO.PWM(self.servo_pin, 100) # 1000
             
-            GPIO.setup(self.servo_pin, GPIO.OUT)
-            self.pwm = GPIO.PWM(self.servo_pin, 100) # 1000
+                dc=1                                # set dc variable to 0 for 0%
+                self.pwm.start(dc)                  # Start PWM with 0% duty cycle
             
-            dc=1                                # set dc variable to 0 for 0%
-            self.pwm.start(dc)                  # Start PWM with 0% duty cycle
+                #for dc in range(0, 101, 5):         # Loop 0 to 100 stepping dc by 5 each loop
+                #    self.pwm.ChangeDutyCycle(dc)
+                #    time.sleep(0.05)              # wait .05 seconds at current LED brightness
+                #    print(dc)
             
-            #for dc in range(0, 101, 5):         # Loop 0 to 100 stepping dc by 5 each loop
-            #    self.pwm.ChangeDutyCycle(dc)
-            #    time.sleep(0.05)              # wait .05 seconds at current LED brightness
-            #    print(dc)
-            
-            #self.pwm.stop()
+                #self.pwm.stop()
             
         except Exception as ex:
             print("Failed in GPIO init: " + str(ex))
@@ -273,16 +279,20 @@ class CandlecamAPIHandler(APIHandler):
                     if 'ringtone' not in self.persistent_data:
                         self.persistent_data['ringtone'] = 'default'
                     if 'led_brightness' not in self.persistent_data:
-                        self.persistent_data['led_brightness'] = 50
+                        self.persistent_data['led_brightness'] = 10
                     if 'led_color' not in self.persistent_data:
-                        self.persistent_data['led_color'] = "#ff0000"
+                        self.persistent_data['led_color'] = "#ffffff"
+                    if 'cover_sate' not in self.persistent_data:
+                        self.persistent_data['cover_state'] = 'closed'
+                    if 'politeness' not in self.persistent_data:
+                        self.persistent_data['politeness'] = True
                         
             except:
                 first_run = True
                 print("Could not load persistent data (if you just installed the add-on then this is normal)")
                 
                 try:
-                    self.persistent_data = {'streaming':True, 'ringtone_volume':90, 'ringtone':'default', 'thing_settings':{}}
+                    self.persistent_data = {'streaming':True, 'ringtone_volume':90, 'ringtone':'default', 'cover_state':'closed', 'politness':True, 'thing_settings':{}}
                     self.save_persistent_data()
                 except Exception as ex:
                     print("Error creating initial persistence variable: " + str(ex))
@@ -318,11 +328,13 @@ class CandlecamAPIHandler(APIHandler):
             print("Failed to init UX extension API handler: " + str(e))
         
         
+        
         # LOAD CONFIG
         try:
             self.add_from_config()
         except Exception as ex:
             print("Error loading config: " + str(ex))
+        
         
         
         # PATHS & DIRECTORIES
@@ -387,8 +399,7 @@ class CandlecamAPIHandler(APIHandler):
             
         except Exception as ex:
             print("Error making stream directory: " + str(ex))
-                
-            
+        
         
         # Create ramdisk for dash files (to prevent wear on SD card)
         self.available = 0
@@ -408,11 +419,27 @@ class CandlecamAPIHandler(APIHandler):
                 self.ramdrive_created = True
 
 
+        # Start stream if necessary
         if self.persistent_data['streaming']:
             if self.DEBUG:
-                print("According to persistent data, streaming was on. Setting streaming_change to True (starting ffmpeg).")
+                print("According to persistent data, streaming was on. Setting streaming_change to True (starting streaming).")
             self.streaming_change(True)
 
+        
+        
+        # Setup LED light
+        try:
+            if self.respeaker:
+                if self.DEBUG:
+                    print("setting up LED light on ReSpeaker hat")
+                self.lights = APA102(3)
+                self.set_led(self.persistent_data['led_color'],self.persistent_data['led_brightness'], False)
+            
+        except Exception as ex:
+            print("Failed in LED setup: " + str(ex))
+        
+
+        
         
         try:
             if self.DEBUG:
@@ -433,7 +460,7 @@ class CandlecamAPIHandler(APIHandler):
         if self.DEBUG:
             print("in ding.")
         self.pressed = True
-        self.pressed_count = 30
+        self.pressed_countdown = self.pressed_countdown_time
         return
         
         
@@ -491,26 +518,38 @@ class CandlecamAPIHandler(APIHandler):
             'Candlecam test description'
         )
 
-        met = {'@type': 'VideoProperty',
-                        'title': 'Video',
-                        'type': 'null',
-                        'description': 'Video stream',
-                        'links':[
-                            {
-                                'rel':'alternate',
-                                'href':'/media/candlecam/stream/index.mpd',
-                                #'href':self.dash_file_path,
-                                #'mediaType':'x-motion-jpeg' #video/x-jpeg or video/x-motion-jpeg ?
-                                'mediaType': 'application/dash+xml'
-                            },
-                            {
-                                'rel': 'alternate',
-                                'href': '/media/candlecam/stream/master.m3u8',
-                                #'href': self.m3u8_file_path,
-                                'mediaType': 'application/vnd.apple.mpegurl'
-                            }
-                        ]
-                    }
+
+        if self.encode_audio:
+            met = {'@type': 'VideoProperty',
+                            'title': 'Video',
+                            'type': 'null',
+                            'description': 'Video stream',
+                            'links':[
+                                {
+                                    'rel':'alternate',
+                                    'href':'/media/candlecam/stream/index.mpd',
+                                    'mediaType': 'application/dash+xml'
+                                },
+                                {
+                                    'rel': 'alternate',
+                                    'href': '/media/candlecam/stream/master.m3u8',
+                                    'mediaType': 'application/vnd.apple.mpegurl'
+                                }
+                            ]
+                        }
+        else:
+            met = {'@type': 'VideoProperty',
+                            'title': 'Video',
+                            'type': 'null',
+                            'description': 'Video stream',
+                            'links':[
+                                {
+                                    'rel':'alternate',
+                                    'href':'/mjpg',
+                                    'mediaType':'video/x-motion-jpeg'
+                                },
+                            ]
+                        }
         
         prop = webthing.Property(thing,'stream',Value(None),met)
         if self.DEBUG:
@@ -519,13 +558,13 @@ class CandlecamAPIHandler(APIHandler):
         
         
         # Enable or disable streaming
-        streaming_atype = None
-        button_atype = None
+        #streaming_atype = None
+        #button_atype = None
         
-        if self.only_stream_on_button_press:
-            button_atype = 'OnOffProperty'
-        else:
-            streaming_atype = 'OnOffProperty'
+        #if self.respeaker and self.only_stream_on_button_press:
+        #    button_atype = 'OnOffProperty'
+        #else:
+        #    streaming_atype = 'OnOffProperty'
             
         
         thing.add_property(
@@ -533,72 +572,87 @@ class CandlecamAPIHandler(APIHandler):
                      'streaming',
                      Value(self.persistent_data['streaming'], self.streaming_change),
                      metadata={
-                         '@type': streaming_atype,
+                         '@type': 'OnOffProperty',
                          'title': 'Streaming',
                          'type': 'boolean',
                          'description': 'Whether video video (and audio) is streaming',
                      }))
         
-        thing.add_property(
-            Prop(thing,
-                     'button',
-                     self.button_state,
-                     metadata={
-                         '@type': 'PushedProperty',
-                         'title': 'Button',
-                         'type': 'boolean',
-                         'description': 'Whether video video (and audio) is streaming',
-                     }))
-                   
-        thing.add_property(
-            Prop(thing,
-                     'volume',
-                     Value(self.persistent_data['ringtone_volume'], lambda v: self.volume_change(v)),
-                     metadata={
-                         '@type': 'BrightnessProperty',
-                         'title': 'Doorbell volume',
-                         'type': 'integer',
-                         'description': 'The volume of the tone being played at the door itself',
-                         'minimum': 0,
-                         'maximum': 100,
-                         'unit': 'percent',
-                     }))
+        
+        
+        if self.respeaker:
+            
+            thing.add_property(
+                Prop(thing,
+                         'button',
+                         self.button_state,
+                         metadata={
+                             '@type': 'PushedProperty',
+                             'title': 'Button',
+                             'type': 'boolean',
+                             'description': 'Shows the state of the doorbell button',
+                         }))
+                         
+            thing.add_property(
+                Prop(thing,
+                         'volume',
+                         Value(self.persistent_data['ringtone_volume'], lambda v: self.volume_change(v)),
+                         metadata={
+                             '@type': 'BrightnessProperty',
+                             'title': 'Ringtone volume',
+                             'type': 'integer',
+                             'description': 'The volume of the tone being played at the door itself',
+                             'minimum': 0,
+                             'maximum': 100,
+                             'unit': 'percent',
+                         }))
                      
-        thing.add_property(
-            Prop(thing,
-                     'led_brightness',
-                     Value(self.persistent_data['led_brightness'], lambda v: self.led_brightness(v)),
-                     metadata={
-                         '@type': 'BrightnessProperty',
-                         'title': 'Light brightness',
-                         'type': 'integer',
-                         'description': 'The brightness of the built-in color LED',
-                         'minimum': 0,
-                         'maximum': 100,
-                         'unit': 'percent',
-                     }))
+            thing.add_property(
+                Prop(thing,
+                         'led_brightness',
+                         Value(self.persistent_data['led_brightness'], lambda v: self.set_led(self.persistent_data['led_color'],v)),
+                         metadata={
+                             '@type': 'BrightnessProperty',
+                             'title': 'Brightness',
+                             'type': 'integer',
+                             'description': 'The brightness of the built-in color LED',
+                             'minimum': 0,
+                             'maximum': 100,
+                             'unit': 'percent',
+                         }))
                      
-        thing.add_property(
-            Prop(thing,
-                     'led_color',
-                     Value(self.persistent_data['led_color'], lambda v: self.led_color(v)),
-                     metadata={
-                         '@type': 'ColorProperty',
-                         'title': 'Color',
-                         'type': 'string',
-                         'description': 'The color of the built-in LED',
-                     }))
+            thing.add_property(
+                Prop(thing,
+                         'led_color',
+                         Value(self.persistent_data['led_color'], lambda v: self.set_led(v,self.persistent_data['led_brightness'])),
+                         metadata={
+                             '@type': 'ColorProperty',
+                             'title': 'Color',
+                             'type': 'string',
+                             'description': 'The color of the built-in LED',
+                         }))
                      
+            thing.add_property(
+                webthing.Property(thing,
+                         'ringtone',
+                         Value(self.persistent_data['ringtone'], lambda v: self.ringtone_change(v)),
+                         metadata={
+                             'title': 'Ringtone',
+                             'type': 'string',
+                             'description': 'The volume of the tone being played at the door itself',
+                             'enum':['default','classic','klingel','business','fart','none']
+                         }))
+                         
+                         
         thing.add_property(
             webthing.Property(thing,
-                     'ringtone',
-                     Value(self.persistent_data['ringtone'], lambda v: self.ringtone_change(v)),
-                     metadata={
-                         'title': 'Ringtone',
-                         'type': 'string',
-                         'description': 'The volume of the tone being played at the door itself',
-                         'enum':['default','classic','klingel','business','fart','none']
-                     }))
+                 'politeness',
+                 Value(self.persistent_data['politeness'], lambda v: self.politeness_change(v)),
+                 metadata={
+                     'title': 'Politeness',
+                     'type': 'boolean',
+                     'description': 'When the camera cover should automatically close itself',
+                 }))
                      
 
         if self.DEBUG:
@@ -625,9 +679,55 @@ class CandlecamAPIHandler(APIHandler):
         if self.DEBUG:
             print("all thing properties added")
         
-        more_routes = [
-            (r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}),
-        ]
+        
+        more_routes = []
+        
+        if self.encode_audio == False:
+            
+            test = "hoi"
+            
+            #self.picamera = FrameCamera()
+            #print("self.picamera = " + str(self.picamera))
+            
+            #print("BEYOND WITH PICAMERA")
+            
+            #global candlecammy
+            
+            #self.candlecammy_thread()
+            
+            #global candlecammy
+            #candlecammy = cam()
+            #print("pre-candlecammy: " + str(candlecammy))
+            
+            """
+            try:
+                if self.DEBUG:
+                    print("starting the thingy thread")
+                self.c = threading.Thread(target=self.candlecammy_thread, args=(candlecammy,))
+                self.c.daemon = True
+                self.c.start()
+            
+            except:
+                print("Error starting the thingy thread")
+            """
+            
+            #print("creating streaminghandler")
+            
+            #streaming_handler = StreamingHandler()
+            #test_handler = TestHandler()
+            
+            #more_routes.append( (r'/media/mjpg', StreamingHandler) )
+            #more_routes.append( (r"/media/test/(.*)", TestHandler) )
+            more_routes.append( (r'/mjpg', StreamyHandler) ) #, {"cam":candlecammy}
+            
+            
+            
+            print("MORE ROUTES APPENDED: " + str(more_routes))
+            
+        else:
+            print("not starting picamera and it's mjpeg streamhandler")
+
+        more_routes.append( (r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}) )
         
         if self.DEBUG:
             print("starting thing server (will block)")
@@ -639,10 +739,9 @@ class CandlecamAPIHandler(APIHandler):
             self.adapter.send_pairing_prompt("Error starting server. Tip: reboot.");
         if self.DEBUG:
             print("thing server started")
-        #while(True):
-        #    sleep(1)
 
 
+    # This is called every 100 milliseconds
     def update_button(self):
         if self.pressed:
             self.pressed = False
@@ -650,15 +749,74 @@ class CandlecamAPIHandler(APIHandler):
                 self.pressed_sent = True
                 self.button_state.notify_of_external_update(True)
                 self.play_ringtone()
-                
+                #if self.persistent_data['cover_state'] == False:
+                self.move_cover('open')
+                    
+        
+        # After three seconds set the button state back to off
         elif self.pressed_sent == True:
-            if self.pressed_count > 0:
-                self.pressed_count -= 1
-                if self.DEBUG:
-                    print(str(self.pressed_count))
-            else:
+            if self.pressed_countdown == (self.pressed_countdown_time - 30): # Three seconds after the button being pressed...
                 self.pressed_sent = False
                 self.button_state.notify_of_external_update(False)
+                    
+        if self.pressed_countdown > 0:
+            self.pressed_countdown -= 1
+            #if self.DEBUG:
+            #    print(str(self.pressed_countdown))
+                
+            # After a minute or two, go back into a polite state?
+            if self.pressed_countdown == 0: # as it reaches 0
+                print("countdown reached 0")
+                if self.persistent_data['politeness'] == True:
+                    print("polite, so closing cover")
+                    self.move_cover('closed')
+            
+
+
+    def move_cover(self,state):
+        if self.respeaker:
+            
+            if state == 'closed':
+                self.set_led(self.persistent_data['led_color'],self.persistent_data['led_brightness'],False)
+                try:
+                    self.pwm.ChangeDutyCycle(1)
+                    if self.DEBUG:
+                        print("set servo to closed (1)")
+                except Exception as ex:
+                    print("could not set servo: " + str(ex))
+                    
+            elif state == 'open':
+                self.set_led('#ffffff',100,False) # set LED to full brightness.
+                try:
+                    self.pwm.ChangeDutyCycle(70)
+                    if self.DEBUG:
+                        print("set servo to open (70)")
+                except Exception as ex:
+                    print("could not set servo: " + str(ex))
+    
+            elif state == 'maintenance':
+                try:
+                    self.pwm.ChangeDutyCycle(100)
+                    if self.DEBUG:
+                        print("set servo to maintenance (100)")
+                except Exception as ex:
+                    print("could not set servo: " + str(ex))
+        
+        #if self.politeness:
+        #    state = 'closed'
+        self.persistent_data['cover_state'] = state
+        self.save_persistent_data()
+
+
+    def politeness_change(self,politeness_state):
+        if self.DEBUG:
+            print("in politeness, state changes to: " + str(politeness_state))
+        self.persistent_data['politeness'] = politeness_state
+        self.save_persistent_data()
+        
+        if self.pressed_countdown == 0:
+            self.move_cover('closed')
+            self.streaming_change(False)
 
 
     def volume_change(self,volume):
@@ -675,23 +833,29 @@ class CandlecamAPIHandler(APIHandler):
         if state:
             if self.DEBUG:
                 print("")
-                print("THREAD ON")
+                print("STREAMING ON")
             
-            self.ffmpeg()
-            if self.DEBUG:
-                print("past self.ffmpeg in THREAD ON")
-            
-            try:
-                self.pwm.ChangeDutyCycle(99)
+            if self.encode_audio:
+                self.ffmpeg()
                 if self.DEBUG:
-                    print("set servo to min")
-            except Exception as ex:
-                print("could not set servo: " + str(ex))
+                    print("past self.ffmpeg in streaming_change STREAMING ON")
+            
+            else:
+                try:
+                    if self.DEBUG:
+                        print("starting the PiCamera thread")
+                    self.ct = threading.Thread(target=self.run_picamera) #, args=(self.voice_messages_queue,))
+                    self.ct.daemon = True
+                    self.ct.start()
+                except:
+                    print("Error starting the picamera thread")
+
+            self.move_cover('open')
                 
         else:
             if self.DEBUG:
                 print("")
-                print("THREAD OFF")
+                print("STREAMING OFF")
             
             try:
                 self.ffmpeg_process.terminate()
@@ -703,16 +867,14 @@ class CandlecamAPIHandler(APIHandler):
                 self.ffmpeg_process.wait()
                 if self.DEBUG:
                     print("ffmpeg process terminated?")
+                    
+                self.kill_ffmpeg()
+                
             except Exception as ex:
                 print("thread off error: " + str(ex))
 
-            try:                
-                self.pwm.ChangeDutyCycle(1)
-                if self.DEBUG:
-                    print("set servo to max")
-            except Exception as ex:
-                print("could not set servo: " + str(ex))
-            
+            self.move_cover('closed')
+        
         self.persistent_data['streaming'] = state
         self.save_persistent_data()
 
@@ -724,16 +886,17 @@ class CandlecamAPIHandler(APIHandler):
         self.save_persistent_data()
         self.play_ringtone()
 
-        
+
     def play_ringtone(self):
         try:
             if str(self.persistent_data['ringtone']) != 'none':
-                ringtone_command = 'aplay -D plughw:1,0 ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) + str(self.persistent_data['ringtone_volume'])+  '.wav'
+                ringtone_command = 'aplay -M -D plughw:1,0 ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) + str(self.persistent_data['ringtone_volume'])+  '.wav'
+                # --buffer-time=8000
                 #ringtone_command = 'SDL_AUDIODRIVER="alsa" AUDIODEV="hw:1,0" ffplay ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
                 #ringtone_command = 'ffplay -autoexit ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
             
-                if self.DEBUG:
-                    print("ringtone command: " + str(ringtone_command))
+                #if self.DEBUG:
+                #    print("ringtone command: " + str(ringtone_command))
             
                 ringtone_command_array = ringtone_command.split()
         
@@ -745,44 +908,44 @@ class CandlecamAPIHandler(APIHandler):
         except Exception as ex:
             print("Error playing ringtone: " + str(ex))
 
-
-    def led_color(self, hex):
+        
+    def set_led(self,hex,brightness,save=True):
         if self.DEBUG:
             print("setting led color to: " + str(hex))
+            print("setting led brightness to: " + str(brightness) + "%")
+            #print("self.lights = " + str(self.lights))
+        
+        if save:
+            self.persistent_data['led_color'] = hex
+            self.persistent_data['led_brightness'] = brightness
+            self.save_persistent_data()
+        
         try:
             hex = hex.lstrip('#')
             rgb = tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))
-            if self.DEBUG:
-                print('RGB =', str(rgb))
-        
+
             r = rgb[0]
             g = rgb[1]
             b = rgb[2]
         
-            self.lights.set_pixel(0, r, g, b)  # Pixel 1 to Red
-            self.lights.set_pixel(1, r, g, b)  # Pixel 2 to Green
-            self.lights.set_pixel(2, r, g, b)  # Pixel 3 to Blue
-            self.lights.show()
-        except Exception as ex:
-            print("could not set LED brightness: " + str(ex))
-
-
-    def led_brightness(self,brightness):
-        if self.DEBUG:
-            print("setting brightness to: " + str(brightness) + "%")
-          
-        #print(dir(self.lights))
-          
-        try:  
-            brightness = brightness / 100 # requires values between 0 and 1
+            #brightness = brightness / 100 # requires values between 0 and 1
             
-            self.lights.set_brightness(0,brightness)
-            self.lights.set_brightness(1,brightness)
-            self.lights.set_brightness(2,brightness)
+            if self.DEBUG:
+                print('RGB =', str(rgb))
+                print('Brightness =', str(brightness))
+            
+            self.lights.set_pixel(0, r, g, b, brightness)  # Pixel 1
+            self.lights.set_pixel(1, r, g, b, brightness)  # Pixel 2
+            self.lights.set_pixel(2, r, g, b, brightness)  # Pixel 3
             self.lights.show()
+            
         except Exception as ex:
             print("could not set LED brightness: " + str(ex))
-        
+
+
+
+    
+
 
 
     # Read the settings from the add-on settings page
@@ -810,6 +973,7 @@ class CandlecamAPIHandler(APIHandler):
             
         if 'Use microphone' in config:
             self.encode_audio = bool(config['Use microphone'])
+            self.encode_audio = False
             if self.DEBUG:
                 print("-Encode audio preference was in config: " + str(self.DEBUG))
 
@@ -861,147 +1025,31 @@ class CandlecamAPIHandler(APIHandler):
                             print("Ajax")
                         
                             
-                        try:
-                            action = str(request.body['action'])    
+                        action = str(request.body['action'])    
+                        
+                        if action == 'init':
                             
-                            if action == 'init':
+                            if self.DEBUG:
                                 print('ajax handling init')
                                 print("self.persistent_data = " + str(self.persistent_data))
-                                return APIResponse(
-                                  status=200,
-                                  content_type='application/json',
-                                  content=json.dumps({'state': True, 'own_ip': self.own_ip, 'message': 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
-                                )
                                 
-                            elif action == 'save_settings':
-                                
-                                self.persistent_data['thing_settings'] = request.body['thing_settings'] 
+                            return APIResponse(
+                              status=200,
+                              content_type='application/json',
+                              content=json.dumps({'state': True, 'own_ip': self.own_ip, 'message': 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
+                            )
+                            
+                        elif action == 'save_settings':
+                            
+                            self.persistent_data['thing_settings'] = request.body['thing_settings'] 
+                            if self.DEBUG:
                                 print("self.persistent_data['thing_settings'] = " + str(self.persistent_data['thing_settings'])) 
-                                self.save_persistent_data()
-                                 
-                                return APIResponse(
-                                  status=200,
-                                  content_type='application/json',
-                                  content=json.dumps({'state' : True, 'message': 'settings saved succesfully'}),
-                                )
-                                
-                            
-                        except Exception as ex:
-                            print("Error getting init data: " + str(ex))
-                            return APIResponse(
-                              status=500,
-                              content_type='application/json',
-                              content=json.dumps("Error while getting thing data: " + str(ex)),
-                            )
-                    
-                    
-                    
-                    if request.path == '/list':
-                        if self.DEBUG:
-                            print("LISTING")
-                        # Get the list of photos
-                        try:
-                            
-                            #self.camera.capture(self.photo_file_path, use_video_port=True)
-                            
-                            data = self.scan_photo_dir()
-                            if isinstance(data, str):
-                                state = 'error'
-                            else:
-                                state = 'ok'
-                            
+                            self.save_persistent_data()
+                             
                             return APIResponse(
                               status=200,
                               content_type='application/json',
-                              content=json.dumps({'state' : state, 'data' : data, 'settings': {'interval':self.interval, 'contain':self.contain, 'clock' : self.clock } }),
-                            )
-                        except Exception as ex:
-                            print("Error getting init data: " + str(ex))
-                            return APIResponse(
-                              status=500,
-                              content_type='application/json',
-                              content=json.dumps("Error while getting thing data: " + str(ex)),
-                            )
-                            
-                            
-                            
-                    elif request.path == '/delete':
-                        if self.DEBUG:
-                            print("DELETING")
-                        try:
-                            data = []
-                            #target_data_type = self.data_types_lookup_table[int(request.body['property_id'])]
-                            #print("target data type from internal lookup table: " + str(target_data_type))
-                            # action, data_type, property_id, new_value, old_date, new_date
-                            data = self.delete_file( str(request.body['filename']) )
-                            if isinstance(data, str):
-                                state = 'error'
-                            else:
-                                state = 'ok'
-                            
-                            return APIResponse(
-                              status=200,
-                              content_type='application/json',
-                              content=json.dumps({'state' : state, 'data' : data}),
-                            )
-                        except Exception as ex:
-                            print("Error getting thing data: " + str(ex))
-                            return APIResponse(
-                              status=500,
-                              content_type='application/json',
-                              content=json.dumps("Error while changing point: " + str(ex)),
-                            )
-                            
-                            
-                            
-                            
-                    elif request.path == '/save':
-                        if self.DEBUG:
-                            print("SAVING")
-                        try:
-                            data = []
-                            
-                            data = self.save_photo(str(request.body['filename']), str(request.body['filedata']), str(request.body['parts_total']), str(request.body['parts_current']) ) #new_value,date,property_id
-                            if isinstance(data, str):
-                                state = 'error'
-                            else:
-                                state = 'ok'
-                            
-                            return APIResponse(
-                              status=200,
-                              content_type='application/json',
-                              content=json.dumps({'state' : state, 'data' : data}),
-                            )
-                        except Exception as ex:
-                            print("Error deleting point(s): " + str(ex))
-                            return APIResponse(
-                              status=500,
-                              content_type='application/json',
-                              content=json.dumps("Error while deleting point(s): " + str(ex)),
-                            )
-                        
-
-                    elif request.path == '/wake':
-                        if self.DEBUG:
-                            print("WAKING")
-                        
-                        try:
-                            #self.camera.capture(self.photo_file_path, use_video_port=True)
-                            #cmd = 'DISPLAY=:0 xset dpms force on'
-                            #os.system(cmd)
-                            
-                            
-                            return APIResponse(
-                              status=200,
-                              content_type='application/json',
-                              content=json.dumps({'state' : 'woken'}),
-                            )
-                        except Exception as ex:
-                            print("Error waking dispay: " + str(ex))
-                            return APIResponse(
-                              status=500,
-                              content_type='application/json',
-                              content=json.dumps("Error while waking up the display: " + str(ex)),
+                              content=json.dumps({'state' : True, 'message': 'settings saved succesfully'}),
                             )
 
                         
@@ -1036,9 +1084,9 @@ class CandlecamAPIHandler(APIHandler):
 
 
     # INIT
-    def get_init_data(self):
-        if self.DEBUG:
-            print("Getting the initialisation data")
+    #def get_init_data(self):
+    #    if self.DEBUG:
+    #        print("Getting the initialisation data")
 
 
         
@@ -1075,24 +1123,29 @@ class CandlecamAPIHandler(APIHandler):
 
         try:
             self.pwm.stop()
-            self.pi.stop()
+            #self.pi.stop()
             
         except Exception as ex:
-            print("Unload: stopping pigpio error: " + str(ex))
+            print("Unload: stopping GPIO error: " + str(ex))
         
         try:
             poll = self.ffmpeg_process.poll()
             print("poll = " + str(poll))
             if poll == None:
-                print("poll was None - ffmpeg is still running.")
+                if self.DEBUG:
+                    print("poll was None - ffmpeg is still running.")
                 self.ffmpeg_process.terminate()
-                print("past treminate")
+                if self.DEBUG:
+                    print("past terminate")
                 self.ffmpeg_process.wait()
-                print("past wait")
+                if self.DEBUG:
+                    print("past wait")
             else:
                 print("poll was not none - ffmpeg crashed earlier?")
         except Exception as ex:
             print("Unload: terminating ffmpeg_process error: " + str(ex))
+
+        self.kill_ffmpeg() # for good measure
 
         time.sleep(1)
         if self.ramdrive_created:
@@ -1133,14 +1186,53 @@ class CandlecamAPIHandler(APIHandler):
             return False
     
 
+    def kill_ffmpeg(self):
+        try:
+            ffmpeg_check_command = 'ps -aux | grep media/candlecam/stream/index.mpd | grep -v "grep"'
+            ffmpeg_check = subprocess.run(ffmpeg_check_command, shell=True, capture_output=True)
+            ffmpeg_check = ffmpeg_check.stdout
+            ffmpeg_check = ffmpeg_check.decode('utf-8')
+            if self.DEBUG:
+                print(str("ffmpeg_check = " + str(ffmpeg_check)))
+            pid = re.match("^pi\s*([0-9]*)\s", ffmpeg_check)
 
+            if pid:
+                if self.DEBUG:
+                    print("stopping pid: " + str(pid.groups()[0]))
+                os.system( 'kill ' + str(pid.groups()[0]) )
+        
+        except Exception as ex:
+            print("Error trying to find and stop running ffmpeg: " + str(ex))
+    
 
+    def run_picamera(self):    
+        self.picam = picamera.PiCamera(resolution='720p', framerate=10)
+        self.picam.exposure_mode = 'auto'
+        self.picam.awb_mode = 'auto'
+        
+        try:
+            self.picam.start_preview()
+            # Give the camera some warm-up time
+            time.sleep(2)
+            output = StreamOutput()
+            self.picam.start_recording(output, format='mjpeg')
+        except:
+           print('Error setting up recording!')
+        
+        try:
+            while self.persistent_data['streaming']:
+                self.picam.wait_recording(2)
+        except Exception as ex:
+            print("Error while getting image data from camera module: " + str(ex))
+        self.picam.stop_recording()
+        output.close()
+        self.join()
+ 
 
-
+        
 #
 #  ADAPTER
 #
-
 
 class CandlecamAdapter(Adapter):
     """Adapter for Candlecam"""
@@ -1169,8 +1261,72 @@ class CandlecamAdapter(Adapter):
                 print("Persistence directory did not exist, created it now")
         except:
             print("Error: could not make sure persistence dir exists. intended persistence dir path: " + str(self.persistence_dir_path))
-        
 
+
+
+#
+#  PICAMERA CLASSES
+#
+
+class StreamOutput(object):
+    def __init__(self):
+        self.snapshot = None
+
+    def write(self, buf):
+        #global new_frame
+        global frame
+        if buf.startswith(b'\xff\xd8'):
+            self.snapshot = io.BytesIO()
+            #self.snapshot.seek(0)
+        self.snapshot.write(buf)
+        if buf.endswith(b'\xff\xd9'):
+            #self.snapshot.close()
+            frame = self.snapshot
+            
+    def close(self):
+        self.snapshot.close()
+
+
+class StreamyHandler(tornado.web.RequestHandler):
+
+    #@tornado.web.asynchronous
+    @tornado.gen.coroutine
+    def get(self):
+        global frame
+        #global new_frame
+        #global candlecammy
+            
+        mjpg_interval = .1
+        #ioloop = tornado.ioloop.IOLoop.current()
+        my_boundary = "--jpgboundary"
+        self.served_image_timestamp = time.time()
+        
+        #self.set_header('Cache-Control', 'no-cache, private')
+        self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
+        self.set_header('Pragma', 'no-cache')
+        #self.set_header('Connection', 'close')
+        self.set_header('Content-Type', 'multipart/x-mixed-replace;boundary=--jpgboundary')
+        self.flush()
+        
+        while True:
+            self.write(my_boundary + '\r\n')
+            self.write("Content-type: image/jpeg\r\n")
+            self.write("Content-length: %s\r\n\r\n" % frame.getbuffer().nbytes)
+            self.write(frame.getvalue())
+            self.write('\r\n')
+            self.served_image_timestamp = time.time()
+            #print(str(self.served_image_timestamp))
+            self.flush()
+            yield tornado.gen.sleep(.1)
+        
+    def on_finish(self):
+        #print("in on_finish")
+        pass
+
+
+#
+#  HELPER FUNCTIONS
+#
 
 def get_ip():
     """
@@ -1214,3 +1370,4 @@ def get_addresses():
 
     return sorted(list(addresses))
    
+
