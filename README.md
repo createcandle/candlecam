@@ -15,7 +15,7 @@ The easiest way to install it currently is:
 - run this command: `cd /home/pi/.webthings/addons/; git clone https://github.com/createcandle/candlecam.git`
 - wait a minute or two to make sure all files are fully downloaded
 - Now we need to actualy install the addon using this command: `sudo chmod +x /home/pi/.webthings/addons/candlecam/package.sh; /home/pi/.webthings/addons/candlecam/package.sh`
-- Give that at least another 15 minutes to do its work.
+- Give that at least another hour to do its work (not kidding).
 - reboot
 
 The addon should now appear in your installed addons list.
