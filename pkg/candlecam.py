@@ -273,8 +273,12 @@ class CandlecamAPIHandler(APIHandler):
                 print(self.photos_dir_path + " directory did not exist yet, creating it now")
                 os.mkdir( self.photos_dir_path )
                 
+            if not os.path.isdir( self.user_profile['mediaDir'] ):
+                print(self.user_profile['mediaDir'] + " directory did not exist yet, creating it now")
+                os.mkdir( self.user_profile['mediaDir'] )
+                
             if not os.path.isdir( self.media_stream_dir_path ):
-                print(self.self.media_stream_dir_path + " directory did not exist yet, creating it now")
+                print(self.media_stream_dir_path + " directory did not exist yet, creating it now")
                 os.mkdir( self.media_stream_dir_path )
             
         except Exception as ex:
