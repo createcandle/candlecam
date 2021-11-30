@@ -157,7 +157,7 @@
             
                     console.log("GOT THINGS");
                     console.log(this.thing_settings);
-                    if(this.thing_settings != null){
+                    if(typeof this.thing_settings != 'undefined' && this.thing_settings != null){
                         console.log(this.thing_settings.camera_source_thing_id);
                         console.log("this.thing_settings['camera_source_thing_id'] = " + this.thing_settings['camera_source_thing_id'] );
                     }
@@ -627,8 +627,8 @@
             console.log("door buttons check");
             console.log(this.thing_settings.door_release_property_id);
             const door_buttons_container = document.getElementById('extension-candlecam-main-door-buttons-container');
-            if(this.thing_settings.door_release_property_id == null){
-                console.log("add hidden class");
+            if(typeof this.thing_settings.door_release_property_id == 'undefined' || this.thing_settings.door_release_property_id == null){
+                console.log("add hidden class to door buttons container");
                 this.addClass(door_buttons_container,'extension-candlecam-hidden');
             }
             else{
