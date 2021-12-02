@@ -1,5 +1,5 @@
 {
-  "author": "Flatsiedatsie",
+  "author": "CandleSmartHome.com",
   "content_scripts": [
     {
       "css": [
@@ -11,7 +11,7 @@
       ]
     }
   ],
-  "description": "Turn a Pi into a smart doorbell or security camera",
+  "description": "Turn a Pi into a security camera or smart doorbell",
   "gateway_specific_settings": {
     "webthings": {
       "exec": "python3 {path}/main.py",
@@ -20,24 +20,21 @@
       "strict_min_version": "0.10.0"
     }
   },
-  "homepage_url": "https://github.com/flatsiedatsie/photo-frame",
+  "homepage_url": "https://github.com/createcandle/candlecam",
   "id": "candlecam",
   "license": "MPL-2.0",
   "manifest_version": 1,
   "name": "Candle cam",
   "options": {
     "default": {
-      "Interval": 30,
+	  "Use microphone": false,
       "Contain": true,
 	  "Clock": true,
+	  "Use ramdrive": true,
       "Debug": false
     },
     "schema": {
       "properties": {
-        "Interval": {
-          "description": "How many seconds between changing to another random photo.",
-          "type": "string"
-        },
         "Use microphone": {
           "description": "Should audio also be recorded and transmitted? This is not compatible with Voco, since the microphone currently cannot be shared.",
           "type": "boolean"
@@ -50,14 +47,15 @@
           "description": "Show the time on top of the photos.",
           "type": "boolean"
         },
+        "Use ramdrive": {
+          "description": "Might improve the longevity of your SD card, at the cost of memory/performance.",
+          "type": "boolean"
+        },
         "Debug": {
           "description": "Enable this to see much more detail in the internal WebThings Gateway log about what this add-on is doing.",
           "type": "boolean"
         }
       },
-      "required": [
-        "Interval"
-      ],
       "type": "object"
     }
   },
@@ -66,12 +64,14 @@
   "web_accessible_resources": [
     "css/*.css",
     "images/*.svg",
-		"photos/*.gif",
-		"photos/*.jpg",
-		"photos/*.jpeg",
+	"photos/*.gif",
+	"photos/*.jpg",
+	"photos/*.jpeg",
     "stream/*.mpd",
     "stream/*.m4s",
     "stream/*.m3u8",
+	"stream/*.mjpg",
+	"stream/*.mjpeg",
     "js/*.js",
     "views/*.html"
   ]
