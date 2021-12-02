@@ -157,7 +157,7 @@
             
                     console.log("GOT THINGS");
                     console.log(this.thing_settings);
-                    if(typeof this.thing_settings != 'undefined' && this.thing_settings != null){
+                    if(this.thing_settings != null){
                         console.log(this.thing_settings.camera_source_thing_id);
                         console.log("this.thing_settings['camera_source_thing_id'] = " + this.thing_settings['camera_source_thing_id'] );
                     }
@@ -573,7 +573,7 @@
             console.log("Generating UI");
             //console.log("this.push_button_thing_id: " + this.push_button_thing_id);
         
-            //console.log(this.all_things);
+            console.log(this.all_things);
         
             const things = this.all_things;
         
@@ -586,35 +586,62 @@
     			else if( things[key].hasOwnProperty('label') ){
     				thing_title = things[key]['label'];
     			}
-                //console.log(things[key]['href']);
-                //console.log('/things/' + this.camera_source_thing_id);
+                console.log(things[key]['href']);
+                console.log('/things/' + this.camera_source_thing_id);
             
                 // LOAD VIDEO
                 if(things[key]['href'] == '/things/' + this.thing_settings.camera_source_thing_id){
                     console.log("bingo1");
                     for (let prop in things[key]['properties']){
-                        //console.log(prop);
+                        console.log(prop);
                         //console.log(things[key]['properties'][prop]['name']);
                         //console.log(this.camera_source_property_id);
                         if(things[key]['properties'][prop]['name'] == this.thing_settings.camera_source_property_id){
-                            console.log("bingo2");
-                            for (var i = 0; i < things[key]['properties'][prop]['links'].length; i++) {
-                                if(things[key]['properties'][prop]['links'][i]['rel'] == 'alternate'){
-                                    //if(things[key]['properties'][prop]['links'][i]['mediaType'] == 'application/dash+xml'){
-                                        try {
-                                            console.log("loading video: " + things[key]['properties'][prop]['links'][i]['href']);
+                            console.log("bingo2. Found the property for the camera thing");
+                            console.log("things[key]['properties'][prop] = ", things[key]['properties'][prop]);
+                            console.log("things[key]['properties'][prop]['links'] = ", things[key]['properties'][prop]['links']);
+                            
+                            var link_variable_name = "links";
+                            if(typeof things[key]['properties'][prop]['forms'] != 'undefined'){ // For gateway 1.1.0 which follows a new convention
+                                console.log("FORMS array spotted");
+                                link_variable_name = "forms";
+                            }
+                            for (var i = 0; i < things[key]['properties'][prop][link_variable_name].length; i++) {
+                                console.log(things[key]['properties'][prop][link_variable_name][i]);
+                                if(typeof things[key]['properties'][prop][link_variable_name][i]['rel'] != 'undefined'){
+                                    if(things[key]['properties'][prop][link_variable_name][i]['rel'] == 'alternate'){
+                                        //if(things[key]['properties'][prop]['links'][i]['mediaType'] == 'application/dash+xml'){
+                                            try {
+                                                console.log("loading video: " + things[key]['properties'][prop][link_variable_name][i]['href']);
                                         
-                                            await window.player.load( things[key]['properties'][prop]['links'][i]['href'] +'?jwt=' + API.jwt );
-                                            // This runs if the asynchronous load is successful.
-                                            //console.log('- The video has now been loaded!');
-                                            break;
-                                        } catch (e) {
-                                            console.log('- Loading video failed');
-                                            // onError is executed if the asynchronous load fails.
-                                            //console.log(e);
-                                        }
-                                    //}
-                                } 
+                                                await window.player.load( things[key]['properties'][prop][link_variable_name][i]['href'] +'?jwt=' + API.jwt );
+                                                // This runs if the asynchronous load is successful.
+                                                //console.log('- The video has now been loaded!');
+                                                break;
+                                            } catch (e) {
+                                                console.log('- Loading video failed');
+                                                // onError is executed if the asynchronous load fails.
+                                                //console.log(e);
+                                            }
+                                        //}
+                                    } 
+                                }
+                                else if(typeof things[key]['properties'][prop][link_variable_name][i]['href'] != 'undefined'){
+                                    console.log("no rel spotted, but a href was spotted. Probably gateway 1.1.0 or higher.");
+                                    try {
+                                        console.log("loading video: " + things[key]['properties'][prop][link_variable_name][i]['href'] +'?jwt=' + API.jwt);
+                                
+                                        await window.player.load( things[key]['properties'][prop][link_variable_name][i]['href'] +'?jwt=' + API.jwt );
+                                        // This runs if the asynchronous load is successful.
+                                        console.log('- The video sohuld now be loaded!');
+                                        break;
+                                    } catch (e) {
+                                        console.log('- Loading video failed: ', e);
+                                        // onError is executed if the asynchronous load fails.
+                                        //console.log(e);
+                                    }
+                                }
+                                
                             }
                         }
                     }
@@ -627,8 +654,8 @@
             console.log("door buttons check");
             console.log(this.thing_settings.door_release_property_id);
             const door_buttons_container = document.getElementById('extension-candlecam-main-door-buttons-container');
-            if(typeof this.thing_settings.door_release_property_id == 'undefined' || this.thing_settings.door_release_property_id == null){
-                console.log("add hidden class to door buttons container");
+            if(this.thing_settings.door_release_property_id == null){
+                console.log("add hidden class");
                 this.addClass(door_buttons_container,'extension-candlecam-hidden');
             }
             else{
