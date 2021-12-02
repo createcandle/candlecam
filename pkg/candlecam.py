@@ -5,35 +5,52 @@ from __future__ import division
 #from webthing import (Action, Event, Property, SingleThing, Thing, Value, WebThingServer)
 #import webthings.Property as Property2
 
-#import logging
-import webthing
-from webthing import (SingleThing, Thing, Value, WebThingServer)
-#from webthing import Property as prop
-import time
-import uuid
 
-import socket
-import ifaddr
-
-import functools
-import json
 import io
 import os
 import re
 import sys
+
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lib'))
+
+import time
+from time import sleep, mktime
+import uuid
+import json
+
+import socket
+import ifaddr
+
+
+
+import base64
+import socket
+import ifaddr
+import asyncio
+
+#import logging
+import webthing
+from webthing import (SingleThing, Thing, Value, WebThingServer)
+#from webthing import Property as prop
+
+
 #from os import listdir
 #from os.path import isfile, join
-from time import sleep, mktime
+
+#import picamera
+
 import datetime
-import subprocess
+import functools
 import threading
+import subprocess
+
 #from threading import Condition
 import requests
 import base64
 #from pynput.keyboard import Key, Controller
 
 import tornado.web
+import tornado.gen
 
 try:
     from gpiozero import Button
@@ -41,36 +58,27 @@ except:
     print("Could not load gpiozero library")
 
 
+if os.path.isdir("/etc/voicecard"):
 
-try:
-    #from picamera import PiCamera
-    #import picamera
-    #import logging
-    #import socketserver
-    #from wsgiref.handlers import format_date_time
-    #from datetime import datetime
-    #from threading import Condition
-    #import http 
-    #from http import server
-    from gateway_addon import Database, Adapter
-    
-    #from zeroconf import ServiceInfo, Zeroconf
-    
-    #import http.server as server
-    print("libraries loaded")
-    #print(str(server))
-except:
-    print("Could not load Pi Camera library")
+    try:
+        import RPi.GPIO as GPIO
+    except Exception as ex:
+        print("Could not load gpiozero library: " + str(ex))
 
+    try:
+        #from apa102 import APA102
+        from .apa102 import APA102
+        #from .apa import APA102
+    except:
+        print("Could not load APA201 LED lights library")
 
 
 try:
-    from gateway_addon import APIHandler, APIResponse #, Database, Adapter, Device, Property
-    
-    #print("succesfully loaded APIHandler and APIResponse from gateway_addon")
+    from gateway_addon import Database, Adapter, APIHandler, APIResponse
 except:
-    print("Import APIHandler and APIResponse from gateway_addon failed. Use at least WebThings Gateway version 0.10")
-
+    print("Could not load gateway addon library")
+    
+    
 try:
     #from .candlecam_adapter import *
     pass
@@ -97,18 +105,25 @@ if 'WEBTHINGS_HOME' in os.environ:
 
 #candlecam_adapter_running = True
 
+#global _loop, candlecammy, new_frame, frame
+#_loop = None
+#candlecammy = None
+#frame = None
+
 
 class CandlecamAPIHandler(APIHandler):
     """Power settings API handler."""
 
     def __init__(self, verbose=False):
         """Initialize the object."""
-        #print("INSIDE API HANDLER INIT")
+        print("INSIDE API HANDLER INIT")
         
         self.addon_name = 'candlecam'
         self.server = 'http://127.0.0.1:8080'
         self.DEV = True
         self.DEBUG = True
+                  
+        self.has_repeaker_hat = False
                         
         try:
             manifest_fname = os.path.join(
@@ -121,11 +136,11 @@ class CandlecamAPIHandler(APIHandler):
                 manifest = json.load(f)
 
             APIHandler.__init__(self, manifest['id'])
-            self.manager_proxy.add_api_handler(self)
+            self.manager_proxy.add_api_handler(self)            
             
             self.adapter = CandlecamAdapter(self)
-            #if self.DEBUG:
-            #    print("Candlecam adapter created")
+            if self.DEBUG:
+                print("Candlecam adapter created")
             
             
             self.things = [] # Holds all the things, updated via the API. Used to display a nicer thing name instead of the technical internal ID.
@@ -136,67 +151,221 @@ class CandlecamAPIHandler(APIHandler):
         
             self.clock = False
         
-            self.port = 8888
+            #self.port = 8888
+            self.webthing_port = 8889
             self.name = 'candlecam' # thing name
             self.https = False
-            self.own_ip = get_ip()
             
+            self.own_ip = '127.0.0.1'
+            try:
+                self.own_ip = get_ip()
+            except Exception as ex:
+                print(str(ex))
+            
+            
+            self.framerate = 10
             self.encode_audio = False
+            self.use_ramdrive = True
+            self.ramdrive_created = False # it's only created is enough free memory is available (50Mb)
+
+            self.only_stream_on_button_press = False
             
+            self.button_state = Value(False)
+            self.streaming = Value(True)
+            
+            self.volume_level = 90
+            
+            self.pressed = False
+            self.pressed_sent = False
+            self.pressed_countdown_time = 60 #1200 # 1200 = 2 minutes
+            self.pressed_countdown = self.pressed_countdown_time
+            
+            self.button_pin = 17
+            self.servo_pin = 13
+            self.servo_open_position = 0
+            self.servo_closed_position = 70
+            
+            self.terminated = False
+            
+            # CHECK FOR RESPEAKER HAT
+            
+            self.has_respeaker_hat = False
             print("")
             print("aplay -l output:")
             aplay_output = run_command('aplay -l')
             print(str(aplay_output))
             if 'seeed' in aplay_output.lower():
                 print("SEEED ReSpeaker hat spotted")
+                self.has_repeaker_hat = True
             else:
                 print("No SEEED ReSpeaker hat spotted")
 
-            print("self.adapter.persistence_file_path = " + str(self.adapter.persistence_file_path))
+            #ALTERNATIVE RESPEAKER CHECK
+            
+            #self.has_repeaker_hat = False # Is a ReSPeaker 2 mic hat installed?
+            #if os.path.isdir("/etc/voicecard"):
+            #    self.has_repeaker_hat = True
+
+            
+        except Exception as ex:
+            print("Failed in first part of init: " + str(ex))
+            
+            
+        self.kill_ffmpeg()
+
+            
+        try: 
+            if self.has_respeaker_hat:
+            
+                # Button (pin 17)
+                GPIO.setmode(GPIO.BCM) # Use BCM pin numbering
+                GPIO.setup(self.button_pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                #GPIO.setup(17, GPIO.IN)
+                GPIO.add_event_detect(self.button_pin, GPIO.RISING, callback=self.ding, bouncetime=400)
+        
+                # https://www.mbtechworks.com/projects/raspberry-pi-pwm.html
+        
+        
+        
+                # servo (pin 13)
+                GPIO.setup(self.servo_pin, GPIO.OUT)
+                self.pwm = GPIO.PWM(self.servo_pin, 100) # 1000
+        
+                dc=1                                # set dc variable to 0 for 0%
+                self.pwm.start(dc)                  # Start PWM with 0% duty cycle
+        
+                #for dc in range(0, 101, 5):         # Loop 0 to 100 stepping dc by 5 each loop
+                #    self.pwm.ChangeDutyCycle(dc)
+                #    time.sleep(0.05)              # wait .05 seconds at current LED brightness
+                #    print(dc)
+        
+                #self.pwm.stop()
+        
+        except Exception as ex:
+            print("Failed in GPIO init: " + str(ex))
+            
+            
+            
+            
+            
+                
+        # CHECK IF CAMERA IS AVAILABLE
+        self.camera_available = False
+
+        try:
+            check_camera_enabled_command_array = ['/opt/vc/bin/vcgencmd','get_camera']
+            check_camera_result = subprocess.check_output(check_camera_enabled_command_array)
+            check_camera_result = check_camera_result.decode('utf-8')
+            print("check_camera_result = " + str(check_camera_result))
+            if 'supported=0' in check_camera_result:
+                print("Pi camera does not seem to be supported. Enabling it now.")
+                #os.system('sudo raspi-config nonint do_i2c 1')
+
+                with open("/boot/config.txt", "r") as file:
+                    os.system('cp /boot/config.txt /boot/config.bak')
+                    #for line in file:
+                    #    print (line.split("'")[1])
+                    
+                    print("modifying /boot/config.txt, and creating .bak backup copy")
+                    if 'start_x' in file:
+                        os.system('sudo sed -i "s/start_x=0/start_x=1/g" /boot/config.txt')
+                    else:
+                        
+                        os.system('echo "start_x=1" >> /boot/config.txt')
+                        
+                    if self.armv6:
+                        if 'gpu_mem' in file:
+                            os.system("sed -i 's/^\(gpu_mem=\).*/\1128/' /boot/config.txt")
+                        else:
+                            os.system('echo "gpu_mem=128" >> /boot/config.txt')
+                    else:
+                        if 'gpu_mem' in file:
+                            os.system("sed -i 's/^\(gpu_mem=\).*/\1256/' /boot/config.txt")
+                        else:
+                            os.system('echo "gpu_mem=256" >> /boot/config.txt')
+                            
+                    self.adapter.send_pairing_prompt("Please reboot the device");
+                
+                
+            elif 'detected=0' in check_camera_result:
+                print("Pi camera is supported, but was not detected")
+                self.adapter.send_pairing_prompt("Make sure the camera is plugged in");
+            else:
+                if self.DEBUG:
+                    print("Pi camera seems good to go")
+                
+                
+        except Exception as ex:
+            print("Error checking if camera is enabled: " + str(ex))
+                
+                
+                
+                
+                
+
+
+        print("self.adapter.persistence_file_path = " + str(self.adapter.persistence_file_path))
+    
+        # Get persistent data
+        self.persistence_file_path = self.adapter.persistence_file_path
+
+    
+        if self.DEBUG:
+            print("Current working directory: " + str(os.getcwd()))
+    
+        try:
         
             # Get persistent data
             self.persistence_file_path = self.adapter.persistence_file_path
-
-        
-            if self.DEBUG:
-                print("Current working directory: " + str(os.getcwd()))
-        
+            print("self.persistence_file_path = " + str(self.persistence_file_path))
+            self.persistent_data = {}
             first_run = False
             try:
                 with open(self.persistence_file_path) as f:
                     self.persistent_data = json.load(f)
                     if self.DEBUG:
                         print("Persistence data was loaded succesfully.")
-                        
+                    
                     if 'thing_settings' not in self.persistent_data:
                         self.persistent_data['thing_settings'] = {}
-                        
+                    if 'ringtone_volume' not in self.persistent_data:
+                        self.persistent_data['ringtone_volume'] = 90
+                    if 'streaming' not in self.persistent_data:
+                        self.persistent_data['streaming'] = True
+                    if 'ringtone' not in self.persistent_data:
+                        self.persistent_data['ringtone'] = 'default'
+                    if 'led_brightness' not in self.persistent_data:
+                        self.persistent_data['led_brightness'] = 10
+                    if 'led_color' not in self.persistent_data:
+                        self.persistent_data['led_color'] = "#ffffff"
+                    if 'cover_sate' not in self.persistent_data:
+                        self.persistent_data['cover_state'] = 'closed'
+                    if 'politeness' not in self.persistent_data:
+                        self.persistent_data['politeness'] = True
+                    
             except:
                 first_run = True
                 print("Could not load persistent data (if you just installed the add-on then this is normal)")
+            
                 try:
-                    self.persistent_data = {'thing_settings':{}}
+                    self.persistent_data = {'streaming':True, 'ringtone_volume':90, 'ringtone':'default', 'cover_state':'closed', 'politness':True, 'thing_settings':{}}
                     self.save_persistent_data()
                 except Exception as ex:
                     print("Error creating initial persistence variable: " + str(ex))
-        
-        
-        
-        
-        
-        
+    
+    
             system_hostname = socket.gethostname().lower()
             self.hosts = [
                 'localhost',
-                'localhost:{}'.format(self.port),
+                'localhost:{}'.format(self.webthing_port),
                 '{}.local'.format(system_hostname),
-                '{}.local:{}'.format(system_hostname, self.port),
+                '{}.local:{}'.format(system_hostname, self.webthing_port),
             ]
-        
+    
             for address in get_addresses():
                 self.hosts.extend([
                     address,
-                    '{}:{}'.format(address, self.port),
+                    '{}:{}'.format(address, self.webthing_port),
                 ])
 
             self.hostname = None
@@ -204,52 +373,67 @@ class CandlecamAPIHandler(APIHandler):
                 self.hostname = self.hostname.lower()
                 self.hosts.extend([
                     self.hostname,
-                    '{}:{}'.format(self.hostname, self.port),
+                    '{}:{}'.format(self.hostname, self.webthing_port),
                 ])
-            
+        
+            #if self.DEBUG:
+            #    print("self.manager_proxy = " + str(self.manager_proxy))
+            #    print("Created new API HANDLER: " + str(manifest['id']))
+    
+        except Exception as e:
+            print("Failed to init UX extension API handler: " + str(e))
+        
             
             
                 
-            # LOAD CONFIG
-            try:
-                self.add_from_config()
-            except Exception as ex:
-                print("Error loading config: " + str(ex))
+        # LOAD CONFIG
+        try:
+            self.add_from_config()
+        except Exception as ex:
+            print("Error loading config: " + str(ex))
 
-            
-            if self.DEBUG:
-                print("self.manager_proxy = " + str(self.manager_proxy))
-                print("Created new API HANDLER: " + str(manifest['id']))
-        except Exception as e:
-            print("Failed to init UX extension API handler: " + str(e))
+        
+        if self.DEBUG:
+            print("self.manager_proxy = " + str(self.manager_proxy))
+            print("Created new API HANDLER: " + str(manifest['id']))
+
         
         #print("_ _ _ ")
         #print("self.user_profile = " + str(self.user_profile))
         #print("")
+
+        try:
+            print(str(self.user_profile['mediaDir']))
+            self.media_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name)
+        except Exception as e:
+            print("Error, mediadir did not exist in the user profile")
+            self.media_dir_path = os.path.join('/home/pi/.webthings/media', self.addon_name)
         
         try:
             self.addon_path = os.path.join(self.user_profile['addonsDir'], self.addon_name)
             #self.persistence_file_folder = os.path.join(self.user_profile['configDir'])
-            self.media_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name)
-            self.photos_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name, 'photos')
-            self.addon_photos_dir_path = os.path.join(self.addon_path, 'photos')
-            self.addon_stream_dir_path = os.path.join(self.addon_path, 'stream')
-            self.photo_file_path = os.path.join(self.addon_path, 'photos', 'latest.jpg')
-            #self.photo_file_path = os.path.join(self.photos_dir_path,'latest.jpg')
+            
+            self.media_photos_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name, 'photos')
+            #self.addon_photos_dir_path = os.path.join(self.addon_path, 'photos')
+            #self.addon_stream_dir_path = os.path.join(self.addon_path, 'stream')
+            
             
             self.media_stream_dir_path = os.path.join(self.media_dir_path, 'stream')
             
             self.dash_file_path = os.path.join(self.media_stream_dir_path, 'index.mpd')
             #self.dash_stream_url = 'http://' + self.own_ip + ':8080/extensions/candlecam/stream/index.mpd'
             self.m3u8_file_path = os.path.join(self.media_stream_dir_path, 'master.m3u8')
+            self.mjpeg_file_path = os.path.join(self.media_stream_dir_path, 'stream.mjpeg')
             #self.m3u8_stream_url = 'http://' + self.own_ip + ':8080/extensions/candlecam/stream/master.m3u8'
             
             #self.ffmpeg_output_path = os.path.join( self.addon_stream_dir_path, 'index.mpd')
             self.ffmpeg_output_path = os.path.join( self.media_stream_dir_path,'index.mpd')
+            
+            self.latest_photo_file_path = os.path.join( self.media_photos_dir_path,'latest.jpg')
             #self.dash_file_path = os.path.join(self.addon_path, 'stream', 'index.mpd')
 
             
-            print("self.photo_file_path = " + str(self.photo_file_path))
+            print("self.latest_photo_file_path = " + str(self.latest_photo_file_path))
             print("self.ffmpeg_output_path = " + str(self.ffmpeg_output_path))
             
         except Exception as e:
@@ -257,26 +441,26 @@ class CandlecamAPIHandler(APIHandler):
             
         try:
             
-            if not os.path.isdir( self.addon_photos_dir_path ):
-                print(self.addon_photos_dir_path + " directory did not exist yet, creating it now")
-                os.mkdir( self.addon_photos_dir_path )
+            #if not os.path.isdir( self.addon_photos_dir_path ):
+            #    print(self.addon_photos_dir_path + " directory did not exist yet, creating it now")
+            #    os.mkdir( self.addon_photos_dir_path )
             
-            if not os.path.isdir( self.addon_stream_dir_path ):
-                print(self.addon_stream_dir_path + " directory did not exist yet, creating it now")
-                os.mkdir( self.addon_stream_dir_path )
+            #if not os.path.isdir( self.addon_stream_dir_path ):
+            #    print(self.addon_stream_dir_path + " directory did not exist yet, creating it now")
+            #    os.mkdir( self.addon_stream_dir_path )
             
             if not os.path.isdir( self.media_dir_path ):
                 print(self.media_dir_path + " directory did not exist yet, creating it now")
                 os.mkdir( self.media_dir_path )
             
-            if not os.path.isdir( self.photos_dir_path ):
-                print(self.photos_dir_path + " directory did not exist yet, creating it now")
-                os.mkdir( self.photos_dir_path )
+            if not os.path.isdir( self.media_photos_dir_path ):
+                print(self.media_photos_dir_path + " directory did not exist yet, creating it now")
+                os.mkdir( self.media_photos_dir_path )
                 
             if not os.path.isdir( self.user_profile['mediaDir'] ):
-                print(self.user_profile['mediaDir'] + " directory did not exist yet, creating it now")
+                print("creating media dir")
                 os.mkdir( self.user_profile['mediaDir'] )
-                
+
             if not os.path.isdir( self.media_stream_dir_path ):
                 print(self.media_stream_dir_path + " directory did not exist yet, creating it now")
                 os.mkdir( self.media_stream_dir_path )
@@ -294,7 +478,67 @@ class CandlecamAPIHandler(APIHandler):
                 print("self.gateway_version did not exist")
             
         #self.keyboard = Controller()
+        
+        
+        
+        
+        
+        # Create ramdisk for dash files (to prevent wear on SD card)
+        self.available = 0
+        self.use_ramdrive = False # TODO DEBUG TEMPORARY, REMOVE ME
+        if self.use_ramdrive:
+            
+            ram_data = subprocess.check_output('grep ^MemFree /proc/meminfo')
+            ram_data = ram_data.decode('utf-8')
+            ram_data = int(''.join(filter(str.isdigit, ram_data)))
+            
+            if self.DEBUG:
+                print("freemem: " + str(ram_data))
+            if ram_data > 80000:
+                if self.DEBUG:
+                    print("Enough free memory, so creating ramdrive")
+                os.system('sudo mount -t tmpfs -o size=50m candlecam_ramdrive ' + self.media_stream_dir_path)
+                self.ramdrive_created = True
 
+
+        # Start stream if necessary
+        if self.persistent_data['streaming']:
+            if self.DEBUG:
+                print("According to persistent data, streaming was on. Setting streaming_change to True (starting streaming).")
+            self.streaming_change(True)
+
+        
+        
+        # Setup LED light
+        try:
+            if self.has_respeaker_hat:
+                if self.DEBUG:
+                    print("setting up LED light on ReSpeaker hat")
+                self.lights = APA102(3)
+                self.set_led(self.persistent_data['led_color'],self.persistent_data['led_brightness'], False)
+            
+        except Exception as ex:
+            print("Failed in LED setup: " + str(ex))
+        
+        
+        
+        
+        
+        
+        
+        # start libcamera streaming if on Raspbian Bullseye
+ 
+        self.libcamera_available = False
+        cameralib_check = run_command('which which libcamera-vid')
+        if len(cameralib_check) > 10:
+            print("libcamera seems to be available")
+            self.libcamera_available = True
+            get_snapshot_command = 'libcamera-jpeg -o ' + str(self.latest_photo_file_path) + ' -n --width 640 --height 480'
+            print("get_snapshot_command = " + str(get_snapshot_command))
+            snapshot_result = run_command(get_snapshot_command)
+            print("libcamera-jpeg result: " + str(snapshot_result))
+            time.sleep(3)
+            
  
  
         """
@@ -356,9 +600,9 @@ class CandlecamAPIHandler(APIHandler):
         """
         
         
-
+        print("Starting the ffmpeg thread")
         if self.DEBUG:
-            print("Starting the ffmpeg command")
+            print("Starting the ffmpeg thread")
         try:
             # Restore the timers, alarms and reminders from persistence.
             #if 'action_times' in self.persistent_data:
@@ -374,8 +618,16 @@ class CandlecamAPIHandler(APIHandler):
         
         
 
-        self.thingy()
-
+        #self.thingy()
+        try:
+            if self.DEBUG:
+                print("starting the thingy thread")
+            self.t = threading.Thread(target=self.thingy) #, args=(self.voice_messages_queue,))
+            self.t.daemon = True
+            self.t.start()
+            
+        except:
+            print("Error starting the thingy thread")
         
 
         
@@ -453,6 +705,7 @@ class CandlecamAPIHandler(APIHandler):
  
         #print("server: " + str(server))
  
+        '''
         PAGEX="""\
         <html>
         <head>
@@ -464,7 +717,7 @@ class CandlecamAPIHandler(APIHandler):
         </body>
         </html>
         """
-        
+        '''
         
         PAGE="""\
         {
@@ -490,7 +743,19 @@ class CandlecamAPIHandler(APIHandler):
                       "rel": "alternative",
                       "href": "http://"""
         
-        PAGE+= self.adapter.own_ip
+        PAGE+= self.own_ip
+        
+        
+        PAGE+=""":8888/media/stream.mjpg",
+                      "mediaType": "x-motion-jpeg"
+                    }
+                  ],
+                  "forms": [
+                    {
+                      "rel": "alternative",
+                      "href": "http://"""
+        
+        PAGE+= self.own_ip
         
         
         PAGE+=""":8888/media/stream.mjpg",
@@ -506,6 +771,13 @@ class CandlecamAPIHandler(APIHandler):
                   "@type": "ImageProperty",
                   "readOnly": true,
                   "links": [
+                    {
+                      "rel": "alternative",
+                      "href": "/extensions/candlecam/photos/latest.jpg",
+                      "mediaType": "image/jpeg"
+                    }
+                  ],
+                  "forms": [
                     {
                       "rel": "alternative",
                       "href": "/extensions/candlecam/photos/latest.jpg",
@@ -529,7 +801,9 @@ class CandlecamAPIHandler(APIHandler):
         """
 
 
-        json_page = '{"id": "urn:dev:ops:candlecam-1234", "title": "Candle cam", "@context": "https://iot.mozilla.org/schemas", "properties": {"stream": {"@type": "VideoProperty", "title": "Stream", "type": "null", "description": "Video stream", "links": [{"rel": "alternative", "href": "http://192.168.2.167:8888/media/stream.mjpg", "mediaType": "x-motion-jpeg"}, {"rel": "property", "href": "/properties/stream"}]}}, "actions": {}, "events": {}, "links": [{"rel": "properties", "href": "/properties"}, {"rel": "actions", "href": "/actions"}, {"rel": "events", "href": "/events"}, {"rel": "alternate", "href": "ws://192.168.2.167:8888/"}], "description": "Candlecam test description", "@type": ["VideoCamera"], "base": "http://192.168.2.167:8888/", "securityDefinitions": {"nosec_sc": {"scheme": "nosec"}}, "security": "nosec_sc"}'
+        #json_page = '{"id": "urn:dev:ops:candlecam-1234", "title": "Candle cam", "@context": "https://webthings.io/schemas/", "properties": {"stream": {"@type": "VideoProperty", "title": "Stream", "type": "null", "description": "Video stream", "links": [{"rel": "alternative", "href": "http://192.168.2.167:8888/media/stream.mjpg", "mediaType": "x-motion-jpeg"}, {"rel": "property", "href": "/properties/stream"}]}}, "actions": {}, "events": {}, "links": [{"rel": "properties", "href": "/properties"}, {"rel": "actions", "href": "/actions"}, {"rel": "events", "href": "/events"}, {"rel": "alternate", "href": "ws://192.168.2.167:8888/"}], "description": "Candlecam test description", "@type": ["VideoCamera"], "base": "http://192.168.2.167:8888/", "securityDefinitions": {"nosec_sc": {"scheme": "nosec"}}, "security": "nosec_sc"}'
+        json_page = '{"id": "urn:dev:ops:candlecam-1234", "title": "Candle cam", "@context": "https://webthings.io/schemas/", "properties": {"stream": {"@type": "VideoProperty", "title": "Stream", "type": "null", "description": "Video stream", "forms": [{"rel": "alternative", "href": "http://' + self.own_ip + ':8888/media/stream.mjpg", "mediaType": "x-motion-jpeg"}, {"rel": "property", "href": "/properties/stream"}]}}, "actions": {}, "events": {}, "forms": [{"rel": "properties", "href": "/properties"}, {"rel": "actions", "href": "/actions"}, {"rel": "events", "href": "/events"}, {"rel": "alternate", "href": "ws://' + self.own_ip + ':8888/"}], "description": "Candlecam test description", "@type": ["VideoCamera"], "base": "http://' + self.own_ip + ':8888/", "securityDefinitions": {"nosec_sc": {"scheme": "nosec"}}, "security": "nosec_sc"}'
+        
         json_return = '{"stream": null}'
 
         #print("PAGE:")
@@ -655,17 +929,19 @@ class CandlecamAPIHandler(APIHandler):
         
         #self.thing = make_thing()
         
-        self.button = Button(17)
+        # currently trying RPi.GPIO apparently.
+        #if self.has_repeaker_hat:
+        #    self.button = Button(17)
 
-        self.button.when_pressed = self.ding_dong('ding')
-        button.when_released = self.ding_dong('dong')
+        #    self.button.when_pressed = self.ding_dong('ding')
+        #    self.button.when_released = self.ding_dong('dong')
         
         
         print("end of init")
         
-    def ding_dong(self, state):
-        print("in ding_dong. State: " + str(state))
         
+        
+    
         
     def ffmpeg(self):
         os.system('pkill ffmpeg')
@@ -687,9 +963,9 @@ class CandlecamAPIHandler(APIHandler):
         
         # with audio:
         
-        print("encode_audio = " + str(self.encode_audio))
+        print("Creating FFMEG dash command. self.encode_audio = " + str(self.encode_audio))
         ffmpeg_command = 'ffmpeg  -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 '
-        ffmpeg_command += '-muxdelay 0 -vcodec h264_omx -keyint_min 0 -g 10 '
+        ffmpeg_command += '-muxdelay 0  -keyint_min 0 -g 10 '
         if self.encode_audio:
             ffmpeg_command += '-f alsa -thread_queue_size 16 -ac 1 -ar 44100 -i dsnoop:1,0 '
         ffmpeg_command += '-map 0:v -b:v 400k -video_track_timescale 9000 '
@@ -703,7 +979,7 @@ class CandlecamAPIHandler(APIHandler):
         print("calling ffmpeg command: " + str(ffmpeg_command))
                  
                  
-        run_command(ffmpeg_command)     # -thread_queue_size 16
+        run_command(ffmpeg_command,None)     # -thread_queue_size 16
         #os.system(ffmpeg_command)
         print("beyond run ffmpeg")
         
@@ -717,25 +993,112 @@ class CandlecamAPIHandler(APIHandler):
         
         
         
+    def kill_ffmpeg(self):
+        try:
+            ffmpeg_check_command = 'ps -aux | grep media/candlecam/stream/index.mpd | grep -v "grep"'
+            ffmpeg_check = subprocess.run(ffmpeg_check_command, shell=True, capture_output=True)
+            ffmpeg_check = ffmpeg_check.stdout
+            ffmpeg_check = ffmpeg_check.decode('utf-8')
+            if self.DEBUG:
+                print(str("ffmpeg_check = " + str(ffmpeg_check)))
+            pid = re.match("^pi\s*([0-9]*)\s", ffmpeg_check)
+
+            if pid:
+                if self.DEBUG:
+                    print("stopping pid: " + str(pid.groups()[0]))
+                os.system( 'kill ' + str(pid.groups()[0]) )
+        
+        except Exception as ex:
+            print("Error trying to find and stop running ffmpeg: " + str(ex))
+    
+        
+    # Not useful on Raspian Bullseye yet, as libcamera has no python support yet...
+    def run_picamera(self):
+        print("in run_picamera. Should probably create mjpeg stream now.")
+        
+        
+        if self.encode_audio == False:
+            mjpeg_stream_command = 'libcamera-vid --codec mjpeg -o ' + str(self.mjpeg_file_path) + ' -n --width 640 --height 480'
+            print("Starting MJPEG stream with command: " + str(mjpeg_stream_command))
+            run_command(mjpeg_stream_command, None)
+        
+        """
+        self.picam = picamera.PiCamera(resolution='720p', framerate=10)
+        self.picam.exposure_mode = 'auto'
+        self.picam.awb_mode = 'auto'
+        
+        try:
+            self.picam.start_preview()
+            # Give the camera some warm-up time
+            time.sleep(2)
+            output = StreamOutput()
+            self.picam.start_recording(output, format='mjpeg')
+        except:
+           print('Error setting up recording!')
+        
+        try:
+            while self.persistent_data['streaming']:
+                self.picam.wait_recording(2)
+        except Exception as ex:
+            print("Error while getting image data from camera module: " + str(ex))
+        self.picam.stop_recording()
+        output.close()
+        print("at end of picamera thread. Does it close now?")
+        #self.join()
+        """
+        
+    
+    def ding(self, button):
+        if self.DEBUG:
+            print("in ding.")
+        self.pressed = True
+        self.pressed_countdown = self.pressed_countdown_time
+        return
+        
+        
+    #def ding_dong(self, state):
+    #    print("in ding_dong. State: " + str(state))
+    
+        
         
     def thingy(self):
-        print("in thingy")
+        if self.DEBUG:
+            print("in thingy")
+            print("self.persistent_data = ")
+            print(str(self.persistent_data))
         
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         
         #dash_stream_url = 'http://' + self.own_ip + '/extensions/candlecam/stream/index.mpd'
         #m3u8_stream_url = 'http://' + self.own_ip + '/extensions/candlecam/stream/master.m3u8'
         
         thing = Thing(
-            'urn:dev:ops:candlecam-1234',
+            'urn:dev:ops:candlecam-1235',
             'Candle cam',
             ['VideoCamera'],
             'Candlecam test description'
         )
 
         met = {'@type': 'VideoProperty',
-                        'title': 'Stream',
+                        'title': 'DASH Stream',
                         'type': 'null',
                         'description': 'Video stream',
+                        'forms':[
+                            {
+                                'rel':'alternate',
+                                'href':'/media/candlecam/stream/index.mpd',
+                                #'href':self.dash_file_path,
+                                #'mediaType':'x-motion-jpeg' #video/x-jpeg or video/x-motion-jpeg ?
+                                'mediaType': 'application/dash+xml'
+                            },
+                            {
+                                'rel': 'alternate',
+                                'href': '/media/candlecam/stream/master.m3u8',
+                                #'href': self.m3u8_file_path,
+                                'mediaType': 'application/vnd.apple.mpegurl'
+                            }
+                        ],
                         'links':[
                             {
                                 'rel':'alternate',
@@ -753,14 +1116,183 @@ class CandlecamAPIHandler(APIHandler):
                         ]
                     }
         
+        
+        mjpeg_met = {'@type': 'VideoProperty',
+                        'title': 'MJPEG Stream',
+                        'type': 'null',
+                        'description': 'MJPEG Video stream',
+                        'forms':[
+                            {
+                                'rel':'alternate',
+                                'href':'/media/candlecam/stream/stream.mjpeg',
+                                #'href':self.dash_file_path,
+                                'mediaType':'x-motion-jpeg' #video/x-jpeg or video/x-motion-jpeg ?
+                                #'mediaType': 'application/dash+xml'
+                            }
+                        ],
+                        'links':[
+                            {
+                                'rel':'alternate',
+                                'href':'/media/candlecam/stream/stream.mjpeg',
+                                #'href':self.dash_file_path,
+                                #'mediaType':'x-motion-jpeg' #video/x-jpeg or video/x-motion-jpeg ?
+                                'mediaType':'x-motion-jpeg'
+                            }
+                        ]
+                    }
+                    
+                    
+        snapshot_met = {'@type': 'ImageProperty',
+                        'title': 'Snapshot',
+                        'type': 'null',
+                        'description': 'Snapshot from camera',
+                        'forms':[
+                            {
+                                'rel':'alternate',
+                                'href':'/media/candlecam/photos/latest.jpg',
+                                #'href':self.dash_file_path,
+                                'mediaType':'image/jpeg' #video/x-jpeg or video/x-motion-jpeg ?
+                                #'mediaType': 'application/dash+xml'
+                            }
+                        ],
+                        'links':[
+                            {
+                                'rel':'alternate',
+                                'href':'/media/candlecam/photos/latest.jpg',
+                                #'href':self.dash_file_path,
+                                #'mediaType':'x-motion-jpeg' #video/x-jpeg or video/x-motion-jpeg ?
+                                'mediaType':'image/jpeg'
+                            }
+                        ]
+                    }
+        
+        
         #prop = Property.__init__(thing,'stream',Value(None),met)
         prop = webthing.Property(thing,'stream',Value(None),met)
         print("propped")
         thing.add_property(prop)
         
+        mjpeg_prop = webthing.Property(thing,'mjpeg-stream',Value(None),mjpeg_met)
+        print("MJPEG propped")
+        thing.add_property(mjpeg_prop)
+        
+        snapshot_prop = webthing.Property(thing,'snapshot',Value(None),snapshot_met)
+        print("Snapshot propped")
+        thing.add_property(snapshot_prop)
+        
+        
+        
+        
+        thing.add_property(
+            webthing.Property(thing,
+                     'streaming',
+                     Value(self.persistent_data['streaming'], self.streaming_change),
+                     metadata={
+                         '@type': 'OnOffProperty',
+                         'title': 'Streaming',
+                         'type': 'boolean',
+                         'description': 'Whether video video (and audio) is streaming',
+                     }))
+        
+        
+        
+        if self.has_respeaker_hat:
+            
+            thing.add_property(
+                Prop(thing,
+                         'button',
+                         self.button_state,
+                         metadata={
+                             '@type': 'PushedProperty',
+                             'title': 'Button',
+                             'type': 'boolean',
+                             'description': 'Shows the state of the doorbell button',
+                         }))
+                         
+            thing.add_property(
+                Prop(thing,
+                         'volume',
+                         Value(self.persistent_data['ringtone_volume'], lambda v: self.volume_change(v)),
+                         metadata={
+                             '@type': 'BrightnessProperty',
+                             'title': 'Ringtone volume',
+                             'type': 'integer',
+                             'description': 'The volume of the tone being played at the door itself',
+                             'minimum': 0,
+                             'maximum': 100,
+                             'unit': 'percent',
+                         }))
+                     
+            thing.add_property(
+                Prop(thing,
+                         'led_brightness',
+                         Value(self.persistent_data['led_brightness'], lambda v: self.set_led(self.persistent_data['led_color'],v)),
+                         metadata={
+                             '@type': 'BrightnessProperty',
+                             'title': 'Brightness',
+                             'type': 'integer',
+                             'description': 'The brightness of the built-in color LED',
+                             'minimum': 0,
+                             'maximum': 100,
+                             'unit': 'percent',
+                         }))
+                     
+            thing.add_property(
+                Prop(thing,
+                         'led_color',
+                         Value(self.persistent_data['led_color'], lambda v: self.set_led(v,self.persistent_data['led_brightness'])),
+                         metadata={
+                             '@type': 'ColorProperty',
+                             'title': 'Color',
+                             'type': 'string',
+                             'description': 'The color of the built-in LED',
+                         }))
+                     
+            thing.add_property(
+                webthing.Property(thing,
+                         'ringtone',
+                         Value(self.persistent_data['ringtone'], lambda v: self.ringtone_change(v)),
+                         metadata={
+                             'title': 'Ringtone',
+                             'type': 'string',
+                             'description': 'The volume of the tone being played at the door itself',
+                             'enum':['default','classic','klingel','business','fart','none']
+                         }))
+                         
+                         
+            thing.add_property(
+                webthing.Property(thing,
+                     'politeness',
+                     Value(self.persistent_data['politeness'], lambda v: self.politeness_change(v)),
+                     metadata={
+                         'title': 'Politeness',
+                         'type': 'boolean',
+                         'description': 'When the camera cover should automatically close itself',
+                     }))
+        
+        
+        
+        
+            # Watch for button press events, but only if a respeaker hat is present
+            if self.DEBUG:
+                print('starting the sensor update looping task')
+            self.button_timer = tornado.ioloop.PeriodicCallback(
+                self.update_button,
+                100
+            )
+            self.button_timer.start()
+        
+        
+        
+        
+        
+        
+        
+        
         more_routes = [
             #(r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}),
             (r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}),
+            (r"/media/candlecam/photos/(.*)", tornado.web.StaticFileHandler, {"path": self.media_photos_dir_path}),
             #(r"/media/candlecam/(.*)", tornado.web.StaticFileHandler, {"path": "/home/pi/.webthings/media/candlecam"}),
             #(r"/media/candlecam/(.*)", tornado.web.StaticFileHandler, {"path": "/home/pi/.webthings/media/candlecam"}),
             #(r"/media/(.*)", WebThingServer.tornado.web.StaticFileHandler, {"path": "/home/pi/.webthings/media"}),
@@ -768,21 +1300,254 @@ class CandlecamAPIHandler(APIHandler):
             #(r"/static/(.*)", web.StaticFileHandler, {"path": "/var/www"}),
         ]
         
-        thing_server = WebThingServer(SingleThing(thing), port=8888, additional_routes=more_routes)
-        print("thing_server:")
-        print(str(dir(thing_server)))
-        thing_server.start()
-        print("thing server started")
+        #"""
+        if self.DEBUG:
+            print("starting thing server (will block)")
+        try:
+            self.thing_server = WebThingServer(SingleThing(thing), port=self.webthing_port, additional_routes=more_routes)
+            print("thing_server:")
+            print(str(dir(self.thing_server)))
+            self.thing_server.start()
+            print("thing server started")
+        except Exception as ex:
+            print("Error starting thing server: " + str(ex))
+            self.adapter.send_pairing_prompt("Error starting server. Tip: reboot.");
         #while(True):
         #    sleep(1)
+        #"""
         
 
 
+    # Can be used to have the server serve a file
     #def serve_file(self, path_args, *args, **kwargs):
-    def serve_file(self, var1, **kwargs):
-        print("in server_file")
-        print("path_args = " + str(var1))
+    #def serve_file(self, var1, **kwargs):
+    #    print("in server_file")
+    #    print("path_args = " + str(var1))
 
+
+
+
+
+    # This is called every 100 milliseconds
+    def update_button(self):
+        if self.pressed:
+            self.pressed = False
+            if self.pressed_sent == False:
+                self.pressed_sent = True
+                self.button_state.notify_of_external_update(True)
+                self.play_ringtone()
+                #if self.persistent_data['cover_state'] == False:
+                self.move_cover('open')
+                    
+        
+        # After three seconds set the button state back to off
+        elif self.pressed_sent == True:
+            if self.pressed_countdown == (self.pressed_countdown_time - 30): # Three seconds after the button being pressed...
+                self.pressed_sent = False
+                self.button_state.notify_of_external_update(False)
+                    
+        if self.pressed_countdown > 0:
+            self.pressed_countdown -= 1
+            #if self.DEBUG:
+            #    print(str(self.pressed_countdown))
+                
+            # After a minute or two, go back into a polite state?
+            if self.pressed_countdown == 0: # as it reaches 0
+                print("countdown reached 0")
+                if self.persistent_data['politeness'] == True:
+                    print("polite, so closing cover")
+                    self.move_cover('closed')
+                    
+                    
+    def move_cover(self,state):
+        if self.has_respeaker_hat:
+            
+            if state == 'closed':
+                self.set_led(self.persistent_data['led_color'],self.persistent_data['led_brightness'],False)
+                try:
+                    print("closing cover?: " + str(self.servo_closed_position))
+                    self.pwm.ChangeDutyCycle(70)
+                    if self.DEBUG:
+                        print("set servo to closed (1)")
+                except Exception as ex:
+                    print("could not set servo: " + str(ex))
+                    
+            elif state == 'open':
+                self.set_led('#ff0000',30,False) # set LED to full brightness.
+                try:
+                    print("opening cover?: " + str(self.servo_open_position))
+                    self.pwm.ChangeDutyCycle(1)
+                    if self.DEBUG:
+                        print("set servo to open (70)")
+                except Exception as ex:
+                    print("could not set servo: " + str(ex))
+    
+            elif state == 'maintenance':
+                try:
+                    self.pwm.ChangeDutyCycle(100)
+                    if self.DEBUG:
+                        print("set servo to maintenance (100)")
+                except Exception as ex:
+                    print("could not set servo: " + str(ex))
+        
+        #if self.politeness:
+        #    state = 'closed'
+        self.persistent_data['cover_state'] = state
+        self.save_persistent_data()
+
+
+
+    def politeness_change(self,politeness_state):
+        if self.DEBUG:
+            print("in politeness, state changes to: " + str(politeness_state))
+        self.persistent_data['politeness'] = politeness_state
+        self.save_persistent_data()
+        
+        if self.pressed_countdown == 0:
+            self.move_cover('closed')
+            self.streaming_change(False)
+
+
+
+    def volume_change(self,volume):
+        if self.DEBUG:
+            print("new volume: " + str(volume))
+        self.persistent_data['ringtone_volume'] = volume
+        self.save_persistent_data()            
+
+
+
+
+    def streaming_change(self,state):
+        if self.DEBUG:
+            print("new streaming state: " + str(state))
+            
+        # START STREAMING
+        if state:
+            if self.DEBUG:
+                print("")
+                print("STREAMING ON")
+            
+            if self.encode_audio:
+                self.ffmpeg()
+                if self.DEBUG:
+                    print("past self.ffmpeg in streaming_change STREAMING ON")
+            
+            else:
+                try:
+                    if self.DEBUG:
+                        print("starting the PiCamera thread")
+                    self.ct = threading.Thread(target=self.run_picamera) #, args=(self.voice_messages_queue,))
+                    self.ct.daemon = True
+                    self.ct.start()
+                except:
+                    print("Error starting the picamera thread")
+
+            self.move_cover('open')
+             
+        # STOP STREAMING
+        else:
+            if self.DEBUG:
+                print("")
+                print("STREAMING OFF")
+            
+            try:
+                self.ffmpeg_process.terminate()
+                if self.DEBUG:
+                    print("ffmpeg process terminated command sent")
+                self.ffmpeg_process.kill()
+                if self.DEBUG:
+                    print("ffmpeg process kill command sent")
+                self.ffmpeg_process.wait()
+                if self.DEBUG:
+                    print("ffmpeg process terminated?")
+                    
+                self.kill_ffmpeg()
+                
+            except Exception as ex:
+                print("thread off error: " + str(ex))
+
+
+            # should also stop libcamera-vid cleanly...
+
+            self.move_cover('closed')
+        
+        self.persistent_data['streaming'] = state
+        self.save_persistent_data()
+
+
+
+                   
+    def ringtone_change(self,choice):
+        if self.DEBUG:
+            print("new ringtone choice: " + str(choice))
+        self.persistent_data['ringtone'] = choice
+        self.save_persistent_data()
+        self.play_ringtone()
+
+
+
+    def play_ringtone(self):
+        try:
+            if str(self.persistent_data['ringtone']) != 'none':
+                ringtone_command = 'aplay -M -D plughw:1,0 ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) + str(self.persistent_data['ringtone_volume'])+  '.wav'
+                # --buffer-time=8000
+                #ringtone_command = 'SDL_AUDIODRIVER="alsa" AUDIODEV="hw:1,0" ffplay ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
+                #ringtone_command = 'ffplay -autoexit ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
+            
+                #if self.DEBUG:
+                #    print("ringtone command: " + str(ringtone_command))
+            
+                ringtone_command_array = ringtone_command.split()
+        
+                if self.DEBUG:
+                    print('running ringtone split command:' + str(ringtone_command_array))
+                
+                self.ringtone_process = subprocess.Popen(ringtone_command_array)
+                
+        except Exception as ex:
+            print("Error playing ringtone: " + str(ex))
+
+        
+        
+    def set_led(self,hex,brightness,save=True):
+        if self.DEBUG:
+            print("setting led color to: " + str(hex))
+            print("setting led brightness to: " + str(brightness) + "%")
+            #print("self.lights = " + str(self.lights))
+        
+        if save:
+            self.persistent_data['led_color'] = hex
+            self.persistent_data['led_brightness'] = brightness
+            self.save_persistent_data()
+        
+        try:
+            hex = hex.lstrip('#')
+            rgb = tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))
+
+            r = rgb[0]
+            g = rgb[1]
+            b = rgb[2]
+        
+            #brightness = brightness / 100 # requires values between 0 and 1
+            
+            if self.DEBUG:
+                print('RGB =', str(rgb))
+                print('Brightness =', str(brightness))
+            
+            self.lights.set_pixel(0, r, g, b, brightness)  # Pixel 1
+            self.lights.set_pixel(1, r, g, b, brightness)  # Pixel 2
+            self.lights.set_pixel(2, r, g, b, brightness)  # Pixel 3
+            self.lights.show()
+            
+        except Exception as ex:
+            print("could not set LED brightness: " + str(ex))
+
+
+
+    
+                    
+                    
 
     # Read the settings from the add-on settings page
     def add_from_config(self):
@@ -803,7 +1568,12 @@ class CandlecamAPIHandler(APIHandler):
             print("Error loading config from database")
             return
         
-        if self.DEV:
+        if 'Debugging' in config:
+            self.DEBUG = bool(config['Debugging'])
+            if self.DEBUG:
+                print("-Debugging preference was in config: " + str(self.DEBUG))
+        
+        if self.DEBUG:
             print(str(config))
             
             
@@ -813,16 +1583,19 @@ class CandlecamAPIHandler(APIHandler):
             self.encode_audio = bool(config['Use microphone'])
             if self.DEBUG:
                 print("-Encode audio preference was in config: " + str(self.DEBUG))
-
-        if 'Debugging' in config:
-            self.DEBUG = bool(config['Debugging'])
+        
+        if 'Use ramdrive' in config:
+            self.use_ramdrive = bool(config['Use ramdrive'])
             if self.DEBUG:
-                print("-Debugging preference was in config: " + str(self.DEBUG))
+                print("-Use ramdrive preference was in config: " + str(self.DEBUG))
+        
+                
 
-        if 'Interval' in config:
-            self.interval = int(config['Interval'])
-            if self.DEBUG:
-                print("-Interval preference was in config: " + str(self.interval))
+
+        #if 'Interval' in config:
+        #    self.interval = int(config['Interval'])
+        #    if self.DEBUG:
+        #        print("-Interval preference was in config: " + str(self.interval))
 
         if 'Contain' in config:
             self.contain = bool(config['Contain'])
@@ -862,12 +1635,17 @@ class CandlecamAPIHandler(APIHandler):
                             action = str(request.body['action'])    
                             
                             if action == 'init':
-                                print('ajax handling init')
-                                print("self.persistent_data = " + str(self.persistent_data))
+                                
+                                if self.DEBUG:
+                                    print('ajax handling init')
+                                    print("self.persistent_data = " + str(self.persistent_data))
+                                
                                 return APIResponse(
                                   status=200,
                                   content_type='application/json',
-                                  content=json.dumps({'state' : True, 'message' : 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
+                                  #content=json.dumps({'state' : True, 'message' : 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
+                                  content=json.dumps({'state': True, 'own_ip': self.own_ip, 'message': 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
+                                  
                                 )
                                 
                             elif action == 'save_settings':
@@ -899,7 +1677,7 @@ class CandlecamAPIHandler(APIHandler):
                         # Get the list of photos
                         try:
                             
-                            #self.camera.capture(self.photo_file_path, use_video_port=True)
+                            #self.camera.capture(self.photos_file_path, use_video_port=True)
                             
                             data = self.scan_photo_dir()
                             if isinstance(data, str):
@@ -983,7 +1761,7 @@ class CandlecamAPIHandler(APIHandler):
                             print("WAKING")
                         
                         try:
-                            #self.camera.capture(self.photo_file_path, use_video_port=True)
+                            #self.camera.capture(self.photos_file_path, use_video_port=True)
                             #cmd = 'DISPLAY=:0 xset dpms force on'
                             #os.system(cmd)
                             
@@ -1046,7 +1824,7 @@ class CandlecamAPIHandler(APIHandler):
     def delete_file(self,filename):
         result = "error"
         try:
-            file_path = os.path.join(self.photos_dir_path, str(filename))
+            file_path = os.path.join(self.media_photos_dir_path, str(filename))
             os.remove(file_path)
             result = self.scan_photo_dir()
         except Exception as ex:
@@ -1058,7 +1836,7 @@ class CandlecamAPIHandler(APIHandler):
     def scan_photo_dir(self):
         result = []
         try:
-            for fname in os.listdir(self.photos_dir_path):
+            for fname in os.listdir(self.media_photos_dir_path):
                 if fname.endswith(".jpg") or fname.endswith(".jpeg") or fname.endswith(".gif"):
                     result.append(fname)    
         except:
@@ -1072,7 +1850,45 @@ class CandlecamAPIHandler(APIHandler):
     def unload(self):
         if self.DEBUG:
             print("Shutting down")
+            
+        if self.thing_server:
+            self.thing_server.stop()
+            
+        os.system('pkill libcamera-jpeg')
+        os.system('pkill libcamera-vid')
+        
+        try:
+            self.pwm.stop()
+            #self.pi.stop()
+            
+        except Exception as ex:
+            print("Unload: stopping GPIO error: " + str(ex))
+        
+        try:
+            poll = self.ffmpeg_process.poll()
+            print("poll = " + str(poll))
+            if poll == None:
+                if self.DEBUG:
+                    print("poll was None - ffmpeg is still running.")
+                self.ffmpeg_process.terminate()
+                if self.DEBUG:
+                    print("past terminate")
+                self.ffmpeg_process.wait()
+                if self.DEBUG:
+                    print("past wait")
+            else:
+                print("poll was not none - ffmpeg crashed earlier?")
+        except Exception as ex:
+            print("Unload: terminating ffmpeg_process error: " + str(ex))
 
+        self.kill_ffmpeg() # for good measure
+
+        time.sleep(1)
+        if self.ramdrive_created:
+            print("unmounting ramdrive")
+            os.system('sudo umount ' + self.media_stream_dir_path)
+        if self.DEBUG:
+            print("candlecam ramdrive unmounted")
 
 
     def save_photo(self,filename, filedata, parts_total, parts_current):
@@ -1080,7 +1896,7 @@ class CandlecamAPIHandler(APIHandler):
             print("in file save method. Filename: " + str(filename))
 
         result = []
-        save_path = os.path.join(self.photos_dir_path, str(filename))
+        save_path = os.path.join(self.media_photos_dir_path, str(filename))
 
         
         base64_data = re.sub('^data:image/.+;base64,', '', filedata)
@@ -1278,6 +2094,8 @@ class CandlecamAPIHandler(APIHandler):
     
 
 
+
+    
 
 
 
