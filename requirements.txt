@@ -2,4 +2,6 @@ requests
 picamera
 webthing
 spidev
+ifaddr
 gpiozero
+RPi.GPIO
