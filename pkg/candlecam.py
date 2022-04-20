@@ -18,14 +18,10 @@ from time import sleep, mktime
 import uuid
 import json
 
-import socket
-import ifaddr
-
-
-
 import base64
-import socket
 import ifaddr
+import socket
+#import urllib 
 import asyncio
 
 #import logging
@@ -46,11 +42,14 @@ import subprocess
 
 #from threading import Condition
 import requests
+from requests.adapters import HTTPAdapter
 import base64
 #from pynput.keyboard import Key, Controller
 
 import tornado.web
 import tornado.gen
+
+import picamera
 
 try:
     from gpiozero import Button
@@ -63,7 +62,7 @@ if os.path.isdir("/etc/voicecard"):
     try:
         import RPi.GPIO as GPIO
     except Exception as ex:
-        print("Could not load gpiozero library: " + str(ex))
+        print("Could not load RPi.GPIO: " + str(ex))
 
     try:
         #from apa102 import APA102
@@ -74,7 +73,7 @@ if os.path.isdir("/etc/voicecard"):
 
 
 try:
-    from gateway_addon import Database, Adapter, APIHandler, APIResponse
+    from gateway_addon import Database, Adapter,Device,Property, APIHandler, APIResponse
 except:
     print("Could not load gateway addon library")
     
@@ -123,7 +122,7 @@ class CandlecamAPIHandler(APIHandler):
         self.DEV = True
         self.DEBUG = True
                   
-        self.has_repeaker_hat = False
+        self.has_respeaker_hat = False
                         
         try:
             manifest_fname = os.path.join(
@@ -135,12 +134,16 @@ class CandlecamAPIHandler(APIHandler):
             with open(manifest_fname, 'rt') as f:
                 manifest = json.load(f)
 
+
+            
             APIHandler.__init__(self, manifest['id'])
             self.manager_proxy.add_api_handler(self)            
             
-            self.adapter = CandlecamAdapter(self)
-            if self.DEBUG:
-                print("Candlecam adapter created")
+            self.encode_audio = False
+            
+            
+            
+            self.lights = None
             
             
             self.things = [] # Holds all the things, updated via the API. Used to display a nicer thing name instead of the technical internal ID.
@@ -151,6 +154,11 @@ class CandlecamAPIHandler(APIHandler):
         
             self.clock = False
         
+            self.gateways_ip_list = [] #list of IP addresses and hostnames of local candle servers
+            self.gateways_ip_dict = {} #list of IP addresses and hostnames of local candle servers
+            
+            
+            
             #self.port = 8888
             self.webthing_port = 8889
             self.name = 'candlecam' # thing name
@@ -164,7 +172,7 @@ class CandlecamAPIHandler(APIHandler):
             
             
             self.framerate = 10
-            self.encode_audio = False
+            
             self.use_ramdrive = True
             self.ramdrive_created = False # it's only created is enough free memory is available (50Mb)
 
@@ -188,7 +196,7 @@ class CandlecamAPIHandler(APIHandler):
             self.terminated = False
             
             # CHECK FOR RESPEAKER HAT
-            
+            self.plughw_number = '0,0'
             self.has_respeaker_hat = False
             print("")
             print("aplay -l output:")
@@ -196,22 +204,36 @@ class CandlecamAPIHandler(APIHandler):
             print(str(aplay_output))
             if 'seeed' in aplay_output.lower():
                 print("SEEED ReSpeaker hat spotted")
-                self.has_repeaker_hat = True
+                self.has_respeaker_hat = True
             else:
                 print("No SEEED ReSpeaker hat spotted")
+                
+            print("\nself.has_respeaker_hat: " + str(self.has_respeaker_hat))
+
 
             #ALTERNATIVE RESPEAKER CHECK
             
-            #self.has_repeaker_hat = False # Is a ReSPeaker 2 mic hat installed?
+            #self.has_respeaker_hat = False # Is a ReSPeaker 2 mic hat installed?
             #if os.path.isdir("/etc/voicecard"):
-            #    self.has_repeaker_hat = True
-
+            #    self.has_respeaker_hat = True
+            
+            self.network_scan()
+            
+            
             
         except Exception as ex:
             print("Failed in first part of init: " + str(ex))
             
             
         self.kill_ffmpeg()
+
+        
+        self.adapter = CandlecamAdapter(self)
+        if self.DEBUG:
+            print("Candlecam adapter created")
+            
+        print("self.adapter.user_profile: " + str(self.adapter.user_profile))
+        
 
             
         try: 
@@ -284,12 +306,12 @@ class CandlecamAPIHandler(APIHandler):
                         else:
                             os.system('echo "gpu_mem=256" >> /boot/config.txt')
                             
-                    self.adapter.send_pairing_prompt("Please reboot the device");
+                    self.adapter.send_pairing_prompt("Please reboot the device")
                 
                 
             elif 'detected=0' in check_camera_result:
                 print("Pi camera is supported, but was not detected")
-                self.adapter.send_pairing_prompt("Make sure the camera is plugged in");
+                self.adapter.send_pairing_prompt("Make sure the camera is plugged in")
             else:
                 if self.DEBUG:
                     print("Pi camera seems good to go")
@@ -304,10 +326,10 @@ class CandlecamAPIHandler(APIHandler):
                 
 
 
-        print("self.adapter.persistence_file_path = " + str(self.adapter.persistence_file_path))
+        #print("self.adapter.persistence_file_path = " + str(self.adapter.persistence_file_path))
     
         # Get persistent data
-        self.persistence_file_path = self.adapter.persistence_file_path
+        #self.persistence_file_path = self.adapter.persistence_file_path
 
     
         if self.DEBUG:
@@ -367,7 +389,10 @@ class CandlecamAPIHandler(APIHandler):
                     address,
                     '{}:{}'.format(address, self.webthing_port),
                 ])
-
+            
+            
+            
+            """
             self.hostname = None
             if self.hostname is not None:
                 self.hostname = self.hostname.lower()
@@ -375,6 +400,7 @@ class CandlecamAPIHandler(APIHandler):
                     self.hostname,
                     '{}:{}'.format(self.hostname, self.webthing_port),
                 ])
+            """
         
             #if self.DEBUG:
             #    print("self.manager_proxy = " + str(self.manager_proxy))
@@ -402,6 +428,8 @@ class CandlecamAPIHandler(APIHandler):
         #print("self.user_profile = " + str(self.user_profile))
         #print("")
 
+        print("\nself.user_profile: " + str(self.user_profile))
+
         try:
             print(str(self.user_profile['mediaDir']))
             self.media_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name)
@@ -412,6 +440,7 @@ class CandlecamAPIHandler(APIHandler):
         try:
             self.addon_path = os.path.join(self.user_profile['addonsDir'], self.addon_name)
             #self.persistence_file_folder = os.path.join(self.user_profile['configDir'])
+            print("self.addon_path: " + str(self.addon_path))
             
             self.media_photos_dir_path = os.path.join(self.user_profile['mediaDir'], self.addon_name, 'photos')
             #self.addon_photos_dir_path = os.path.join(self.addon_path, 'photos')
@@ -430,11 +459,17 @@ class CandlecamAPIHandler(APIHandler):
             self.ffmpeg_output_path = os.path.join( self.media_stream_dir_path,'index.mpd')
             
             self.latest_photo_file_path = os.path.join( self.media_photos_dir_path,'latest.jpg')
+            
             #self.dash_file_path = os.path.join(self.addon_path, 'stream', 'index.mpd')
 
             
+            self.addon_sounds_dir_path = os.path.join(self.addon_path, 'sounds')
+            
+            self.addon_sounds_dir_path += os.sep
+            
             print("self.latest_photo_file_path = " + str(self.latest_photo_file_path))
             print("self.ffmpeg_output_path = " + str(self.ffmpeg_output_path))
+            print("self.addon_sounds_dir_path = " + str(self.addon_sounds_dir_path))
             
         except Exception as e:
             print("Failed to make paths: " + str(e))
@@ -449,6 +484,10 @@ class CandlecamAPIHandler(APIHandler):
             #    print(self.addon_stream_dir_path + " directory did not exist yet, creating it now")
             #    os.mkdir( self.addon_stream_dir_path )
             
+            if not os.path.isdir( self.user_profile['mediaDir'] ):
+                print("creating media dir")
+                os.mkdir( self.user_profile['mediaDir'] )
+            
             if not os.path.isdir( self.media_dir_path ):
                 print(self.media_dir_path + " directory did not exist yet, creating it now")
                 os.mkdir( self.media_dir_path )
@@ -457,10 +496,6 @@ class CandlecamAPIHandler(APIHandler):
                 print(self.media_photos_dir_path + " directory did not exist yet, creating it now")
                 os.mkdir( self.media_photos_dir_path )
                 
-            if not os.path.isdir( self.user_profile['mediaDir'] ):
-                print("creating media dir")
-                os.mkdir( self.user_profile['mediaDir'] )
-
             if not os.path.isdir( self.media_stream_dir_path ):
                 print(self.media_stream_dir_path + " directory did not exist yet, creating it now")
                 os.mkdir( self.media_stream_dir_path )
@@ -481,14 +516,12 @@ class CandlecamAPIHandler(APIHandler):
         
         
         
-        
-        
         # Create ramdisk for dash files (to prevent wear on SD card)
         self.available = 0
         self.use_ramdrive = False # TODO DEBUG TEMPORARY, REMOVE ME
         if self.use_ramdrive:
             
-            ram_data = subprocess.check_output('grep ^MemFree /proc/meminfo')
+            ram_data = subprocess.check_output(['grep','^MemFree','/proc/meminfo'])
             ram_data = ram_data.decode('utf-8')
             ram_data = int(''.join(filter(str.isdigit, ram_data)))
             
@@ -510,6 +543,7 @@ class CandlecamAPIHandler(APIHandler):
         
         
         # Setup LED light
+        self.lights = None
         try:
             if self.has_respeaker_hat:
                 if self.DEBUG:
@@ -529,80 +563,23 @@ class CandlecamAPIHandler(APIHandler):
         # start libcamera streaming if on Raspbian Bullseye
  
         self.libcamera_available = False
-        cameralib_check = run_command('which which libcamera-vid')
-        if len(cameralib_check) > 10:
-            print("libcamera seems to be available")
-            self.libcamera_available = True
-            get_snapshot_command = 'libcamera-jpeg -o ' + str(self.latest_photo_file_path) + ' -n --width 640 --height 480'
-            print("get_snapshot_command = " + str(get_snapshot_command))
-            snapshot_result = run_command(get_snapshot_command)
-            print("libcamera-jpeg result: " + str(snapshot_result))
-            time.sleep(3)
+        cameralib_check = run_command('which libcamera-vid')
+        print("cameralib_check result: " + str(cameralib_check))
+        if cameralib_check != None:
+            if len(cameralib_check) > 10:
+                print("libcamera seems to be available")
+                self.libcamera_available = True
+                get_snapshot_command = 'libcamera-jpeg -o ' + str(self.latest_photo_file_path) + ' -n --width 640 --height 480'
+                print("get_snapshot_command = " + str(get_snapshot_command))
+                snapshot_result = run_command(get_snapshot_command)
+                print("libcamera-jpeg result: " + str(snapshot_result))
+                time.sleep(3)
             
  
- 
-        """
- 
-        args = [
-          '-y',
-          '-i', streamUrl.toString(),
-          '-fflags', 'nobuffer',
-          '-vsync', '0',
-          '-copyts',
-          '-probesize', '200000',
-          '-window_size', '5',
-          '-extra_window_size', '10',
-          '-use_template', '1',
-          '-use_timeline', '1',
-        ];
-
-        // ffmpeg 4.x
-        if (this.ffmpegMajor >= 4) {
-          args.push(
-            '-streaming', '1',
-            '-hls_playlist', '1'
-          );
-        }
-
-        // ffmpeg 4.1+
-        if (this.ffmpegMajor > 4 ||
-            (this.ffmpegMajor === 4 && this.ffmpegMinor >= 1)) {
-          args.push(
-            // eslint-disable-next-line max-len
-            '-format_options', 'movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof',
-            '-seg_duration', '1',
-            '-dash_segment_type', 'mp4'
-          );
-        }
-
-        args.push(
-          '-remove_at_exit', '1',
-          '-loglevel', 'quiet'
-        );
-
-        const highQuality = this.findProperty('highQuality').value;
-
-        // always transcode video so that we get the bitrate we want
-        args.push('-c:v', 'libx264',
-                  '-b:v:0', highQuality ? '800k' : '400k',
-                  '-profile:v:0', 'high');
-
-        if (haveAudio) {
-          // always transcode audio so that we get the bitrate we want
-          args.push('-c:a', 'aac',
-                    '-b:a:0', highQuality ? '128k' : '64k');
-        }
-
-        args.push('-f', 'dash', path.join(this.mediaDir, 'index.mpd'));
-
-        this.transcodeProcess = child_process.spawn('ffmpeg', args);
- 
-        """
         
-        
-        print("Starting the ffmpeg thread")
-        if self.DEBUG:
-            print("Starting the ffmpeg thread")
+        #print("init: Starting the ffmpeg thread")
+        #if self.DEBUG:
+        #    print("Starting the ffmpeg thread")
         try:
             # Restore the timers, alarms and reminders from persistence.
             #if 'action_times' in self.persistent_data:
@@ -610,9 +587,10 @@ class CandlecamAPIHandler(APIHandler):
             #        print("loading action times from persistence") 
             #    self.persistent_data['action_times'] = self.persistent_data['action_times']
             
-            self.t = threading.Thread(target=self.ffmpeg) #, args=(self.voice_messages_queue,))
-            self.t.daemon = True
-            self.t.start()
+            #self.t = threading.Thread(target=self.ffmpeg) #, args=(self.voice_messages_queue,))
+            #self.t.daemon = True
+            #self.t.start()
+            pass
         except:
             print("Error starting the clock thread")
         
@@ -621,320 +599,13 @@ class CandlecamAPIHandler(APIHandler):
         #self.thingy()
         try:
             if self.DEBUG:
-                print("starting the thingy thread")
+                print("init: starting the thingy thread")
             self.t = threading.Thread(target=self.thingy) #, args=(self.voice_messages_queue,))
             self.t.daemon = True
             self.t.start()
             
         except:
             print("Error starting the thingy thread")
-        
-
-        
-        
-        """
-        args = [
-            '_webthing._tcp.local.',
-            '{}._webthing._tcp.local.'.format(self.name),
-        ]
-        kwargs = {
-            'addresses': [socket.inet_aton(get_ip())],
-            'port': self.port,
-            'properties': {
-                'path': '/',
-            },
-            'server': '{}.local.'.format(socket.gethostname()),
-        }
-
-        if self.https:
-            kwargs['properties']['tls'] = '1'
-
-        self.service_info = ServiceInfo(*args, **kwargs)
-        self.zeroconf = Zeroconf()
-        self.zeroconf.register_service(self.service_info)
-
-        """
-
-        
-
-
-
-
-        #if __name__ == '__main__':
-        
-        #logging.basicConfig(
-        #    level=10,
-        #    format="%(asctime)s %(filename)s:%(lineno)s %(levelname)s %(message)s"
-        #)
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        """
-            -framerate 25 \          # Input framerate
-            -i /dev/cameras/%i \     # Input device
-            -vcodec h264_omx \       # Encoding codec
-            -keyint_min 0 \          # Allow every frame to be a key frame
-            -g 100 \                 # But at most every 100 frames will be a key frame
-            -map 0:v \               # Map input stream 0 to the video of this stream
-            -b:v 1000k \             # Set the bitrate to 1000k
-            -f dash \                # Output format
-            -min_seg_duration 4000 \ # Segment into ~4 second parts
-            -use_template 1 \        # Use templated names for output
-            -use_timeline 0 \        # Dont use the segment time in the template
-            -init_seg_name \         # Initial segment name
-                init-%i-$RepresentationID$.mp4 \
-            -media_seg_name \        # Segment names
-                %i-$RepresentationID$-$Number$.mp4
-            -remove_at_exit 1 \      # Remove all files when stopping
-            -window_size 20 \        # Keep 20 segments on disk
-            /srv/http/dash/%i/%i.mpd # Dash manifest name
-        """
- 
-        #print("server: " + str(server))
- 
-        '''
-        PAGEX="""\
-        <html>
-        <head>
-        <title>picamera MJPEG streaming demo</title>
-        </head>
-        <body>
-        <h1>PiCamera MJPEG Streaming Demo</h1>
-        <img src="/media/stream.mjpg" width="640" height="480" />
-        </body>
-        </html>
-        """
-        '''
-        
-        PAGE="""\
-        {
-            "adapterId": "urn:dev:ops:candlecam",
-            "device": {
-              "id": "candlecam",
-              "title": "Candlecam",
-              "@context": "https://webthings.io/schemas",
-              "@type": [
-                "VideoCamera"
-              ],
-              "description": "A privacy friendly smart doorbell or security camera",
-              "properties": {
-                "stream": {
-                  "name": "stream",
-                  "value": null,
-                  "visible": true,
-                  "type": null,
-                  "@type": "VideoProperty",
-                  "readOnly": true,
-                  "links": [
-                    {
-                      "rel": "alternative",
-                      "href": "http://"""
-        
-        PAGE+= self.own_ip
-        
-        
-        PAGE+=""":8888/media/stream.mjpg",
-                      "mediaType": "x-motion-jpeg"
-                    }
-                  ],
-                  "forms": [
-                    {
-                      "rel": "alternative",
-                      "href": "http://"""
-        
-        PAGE+= self.own_ip
-        
-        
-        PAGE+=""":8888/media/stream.mjpg",
-                      "mediaType": "x-motion-jpeg"
-                    }
-                  ]
-                },
-                "snapshot": {
-                  "name": "snapshot",
-                  "value": null,
-                  "visible": true,
-                  "type": null,
-                  "@type": "ImageProperty",
-                  "readOnly": true,
-                  "links": [
-                    {
-                      "rel": "alternative",
-                      "href": "/extensions/candlecam/photos/latest.jpg",
-                      "mediaType": "image/jpeg"
-                    }
-                  ],
-                  "forms": [
-                    {
-                      "rel": "alternative",
-                      "href": "/extensions/candlecam/photos/latest.jpg",
-                      "mediaType": "image/jpeg"
-                    }
-                  ]
-                }
-              },
-              "actions": {},
-              "events": {},
-              "links": [],
-              "baseHref": "",
-              "pin": {
-                "required": false,
-                "pattern": ""
-              },
-              "credentialsRequired": false
-            },
-            "pluginId": "candlecam"
-          }
-        """
-
-
-        #json_page = '{"id": "urn:dev:ops:candlecam-1234", "title": "Candle cam", "@context": "https://webthings.io/schemas/", "properties": {"stream": {"@type": "VideoProperty", "title": "Stream", "type": "null", "description": "Video stream", "links": [{"rel": "alternative", "href": "http://192.168.2.167:8888/media/stream.mjpg", "mediaType": "x-motion-jpeg"}, {"rel": "property", "href": "/properties/stream"}]}}, "actions": {}, "events": {}, "links": [{"rel": "properties", "href": "/properties"}, {"rel": "actions", "href": "/actions"}, {"rel": "events", "href": "/events"}, {"rel": "alternate", "href": "ws://192.168.2.167:8888/"}], "description": "Candlecam test description", "@type": ["VideoCamera"], "base": "http://192.168.2.167:8888/", "securityDefinitions": {"nosec_sc": {"scheme": "nosec"}}, "security": "nosec_sc"}'
-        json_page = '{"id": "urn:dev:ops:candlecam-1234", "title": "Candle cam", "@context": "https://webthings.io/schemas/", "properties": {"stream": {"@type": "VideoProperty", "title": "Stream", "type": "null", "description": "Video stream", "forms": [{"rel": "alternative", "href": "http://' + self.own_ip + ':8888/media/stream.mjpg", "mediaType": "x-motion-jpeg"}, {"rel": "property", "href": "/properties/stream"}]}}, "actions": {}, "events": {}, "forms": [{"rel": "properties", "href": "/properties"}, {"rel": "actions", "href": "/actions"}, {"rel": "events", "href": "/events"}, {"rel": "alternate", "href": "ws://' + self.own_ip + ':8888/"}], "description": "Candlecam test description", "@type": ["VideoCamera"], "base": "http://' + self.own_ip + ':8888/", "securityDefinitions": {"nosec_sc": {"scheme": "nosec"}}, "security": "nosec_sc"}'
-        
-        json_return = '{"stream": null}'
-
-        #print("PAGE:")
-        #print(PAGE)
-        
-        """
-        class StreamingOutput(object):
-            def __init__(self):
-                self.frame = None
-                self.buffer = io.BytesIO()
-                self.condition = Condition()
-
-            def write(self, buf):
-                if buf.startswith(b'\xff\xd8'):
-                    # New frame, copy the existing buffer's content and notify all
-                    # clients it's available
-                    self.buffer.truncate()
-                    with self.condition:
-                        self.frame = self.buffer.getvalue()
-                        self.condition.notify_all()
-                    self.buffer.seek(0)
-                return self.buffer.write(buf)
-
-        class StreamingHandler(server.BaseHTTPRequestHandler):
-            def do_GET(self):
-                
-                #print("in https request")
-                #print(str(self))
-                #for item in self:
-                #    print(item, ':', self[item])
-                #print("target_adapter = " + str(target_adapter))
-                
-                now = datetime.now()
-                stamp = mktime(now.timetuple())
-                print("in https request. Time: " + str(format_date_time(stamp)))
-                
-                
-                if self.path == '/':
-                    #self.send_response(301)
-                    #self.send_header('Location', '/index.html')
-                    #self.end_headers()
-                #elif self.path == '/index.html' or self.path == '/index.json':
-                    content = json_page.encode('utf-8') #PAGE.encode('utf-8')
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Date', format_date_time(stamp))
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.send_header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
-                    self.send_header('Access-Control-Allow-Methods', 'GET, HEAD, PUT, POST, DELETE')
-                    self.send_header('Etag', '574f45eb87bbda2d7bf323dfcca51ab2fa1e0df5')
-                    self.send_header('Content-Length', len(content))
-                    
-                    self.end_headers()
-                    self.wfile.write(content)
-                    
-                elif self.path == '/properties' or self.path == '/properties/stream':
-                    content = json_return.encode('utf-8')
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Date', format_date_time(stamp))
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.send_header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
-                    self.send_header('Access-Control-Allow-Methods', 'GET, HEAD, PUT, POST, DELETE')
-                    self.send_header('Etag', '574f45eb87bbda2d7bf323dfcca51ab2fa1e0df5')
-                    
-                    self.send_header('Content-Length', len(content))
-                    self.end_headers()
-                    self.wfile.write(content)
-                    
-                elif self.path == '/media/stream.mjpg' or self.path == '/stream.mjpg':
-                    self.send_response(200)
-                    self.send_header('Age', 0)
-                    self.send_header('Cache-Control', 'no-cache, private')
-                    self.send_header('Pragma', 'no-cache')
-                    self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
-                    self.end_headers()
-                    try:
-                        print("target_adapter.running = " + str(target_adapter.running))
-                        while target_adapter.running == True:
-                            with output.condition:
-                                output.condition.wait()
-                                frame = output.frame
-                            self.wfile.write(b'--FRAME\r\n')
-                            self.send_header('Content-Type', 'image/jpeg')
-                            self.send_header('Access-Control-Allow-Origin', '*')
-                            self.send_header('Content-Length', len(frame))
-                            self.end_headers()
-                            self.wfile.write(frame)
-                            self.wfile.write(b'\r\n')
-                        print("target_adapter.running is no longer true, exiting streaming")
-                    except Exception as e:
-                        logging.warning(
-                            'Removed streaming client %s: %s',
-                            self.client_address, str(e))
-                    
-                else:
-                    self.send_error(404)
-                    self.end_headers()
-
-        class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
-            allow_reuse_address = True
-            daemon_threads = True
-
-        with picamera.PiCamera(resolution='640x480', framerate=24) as self.camera:
-            output = StreamingOutput()
-            target_adapter = self.adapter
-            self.output = output
-            self.camera.start_recording(output, format='mjpeg')
-            try:
-                address = ('', 8888)
-                self.server = StreamingServer(address, StreamingHandler)
-                self.server.serve_forever()
-            finally:
-                self.camera.stop_recording()
- 
-        """
-        
- 
-        # TODO: make sure raspi-config camera is enabled 
-        # sudo raspi-config nonint do_camera 0
-            
-        #run_server()
-        
-        #self.thing = make_thing()
-        
-        # currently trying RPi.GPIO apparently.
-        #if self.has_repeaker_hat:
-        #    self.button = Button(17)
-
-        #    self.button.when_pressed = self.ding_dong('ding')
-        #    self.button.when_released = self.ding_dong('dong')
         
         
         print("end of init")
@@ -944,6 +615,7 @@ class CandlecamAPIHandler(APIHandler):
     
         
     def ffmpeg(self):
+        print("in ffmpeg")
         os.system('pkill ffmpeg')
         
         #os.system('ffmpeg -input_format yuyv422 -fflags nobuffer -vsync 0 -f video4linux2 -s 1280x720 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v h264_omx -r 10 -b:v 2M -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -f dash ' + self.dash_file_path + ' -remove_at_exit 1')
@@ -992,6 +664,59 @@ class CandlecamAPIHandler(APIHandler):
         # -init_seg_name init-cam1-$RepresentationID$.mp4 -media_seg_name cam1-$RepresentationID$-$Number$.mp4
         
         
+    def ffmpeg_mjpeg(self):
+        print("in ffmpeg_mjpeg")
+        os.system('pkill ffmpeg')
+        
+        #os.system('ffmpeg -input_format yuyv422 -fflags nobuffer -vsync 0 -f video4linux2 -s 1280x720 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v h264_omx -r 10 -b:v 2M -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -f dash ' + self.dash_file_path + ' -remove_at_exit 1')
+        #os.system('ffmpeg -input_format yuyv422 -fflags nobuffer -vsync 0 -f video4linux2 -s 1280x720 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v libx264 -r 10 -b:v:0 400k -profile:v:0 high -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -f dash ' + self.dash_file_path + ' ')
+        #os.system('ffmpeg -input_format yuyv422 -fflags nobuffer -vsync 0 -f video4linux2 -s 1280x720 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v libx264 -r 10 -b:v:0 400k -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -f dash ' + self.dash_file_path + ' ')
+        #os.system('ffmpeg -fflags nobuffer -vsync 0 -f video4linux2 -s 640x360 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v libx264 -r 10 -b:v:0 400k -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -f dash ' + self.dash_file_path + ' ')
+        
+        
+        # WORKS
+        #os.system('ffmpeg -y -f v4l2 -video_size 1280x720 -framerate 25 -i /dev/video0 -vcodec h264_omx -keyint_min 0 -g 100 -map 0:v -b:v 1000k -f dash -min_seg_duration 4000 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 20 ' +  self.dash_file_path )
+        
+        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 2 -i /dev/video0 -vcodec h264_omx -keyint_min 0 -g 100 -map 0:v -b:v 600k -f dash -min_seg_duration 4000 -use_template 1 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -window_size 5 -extra_window_size 10  ' +  self.dash_file_path )
+        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 -vcodec h264_omx -copyts -keyint_min 0 -g 10 -map 0:v -b:v 600k -f dash -use_template 1 -use_timeline 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -window_size 5 -extra_window_size 10  ' +  self.dash_file_path )
+        
+        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 -muxdelay 0 -vcodec h264_omx -keyint_min 0 -g 10 -map 0:v -b:v 400k -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 ' +  self.dash_file_path )
+        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 -muxdelay 0 -vcodec h264_omx -keyint_min 0 -g 10 -map 0:v -b:v 400k -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 ' +  self.dash_file_path )
+        
+        # with audio:
+        
+        print("Creating FFMEG mjpeg command. self.encode_audio = " + str(self.encode_audio))
+        ffmpeg_command = 'ffmpeg  -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 '
+        #ffmpeg_command += '-muxdelay 0  -keyint_min 0 -g 10 '
+        #if self.encode_audio:
+        #    ffmpeg_command += '-f alsa -thread_queue_size 16 -ac 1 -ar 44100 -i dsnoop:1,0 '
+        #ffmpeg_command += '-map 0:v -b:v 400k -video_track_timescale 9000 '
+        #if self.encode_audio:
+        #    ffmpeg_command += '-map 1:a -c:a aac -b:a 96k '
+        
+        #ffmpeg_command += ' -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 '
+        
+        ffmpeg_command += '-c:v mjpeg -q:v 3 -huffman optimal -an '
+        ffmpeg_command += self.mjpeg_file_path #self.ffmpeg_output_path
+                 #+ self.dash_file_path
+        
+        print("calling ffmpeg_mjpeg command: " + str(ffmpeg_command))
+                 
+                 
+        run_command(ffmpeg_command,None)     # -thread_queue_size 16
+        #os.system(ffmpeg_command)
+        print("beyond run ffmpeg_mjpeg")
+        
+        # -muxdelay 0
+        # -re # realtime
+        # -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 1:a -c:a aac -b:a 96k
+        
+        # -init_seg_name init-$RepresentationID$.mp4 -media_seg_name segment-$RepresentationID$-$Number$.mp4
+        
+        # -init_seg_name init-cam1-$RepresentationID$.mp4 -media_seg_name cam1-$RepresentationID$-$Number$.mp4
+        
+        
+        
         
     def kill_ffmpeg(self):
         try:
@@ -1012,8 +737,39 @@ class CandlecamAPIHandler(APIHandler):
             print("Error trying to find and stop running ffmpeg: " + str(ex))
     
         
+        
+    def run_picamera(self):   
+        if self.DEBUG:
+            print("in run_picamera") 
+        self.picam = picamera.PiCamera(resolution='720p', framerate=10)
+        self.picam.exposure_mode = 'auto'
+        self.picam.awb_mode = 'auto'
+        
+        try:
+            self.picam.start_preview()
+            # Give the camera some warm-up time
+            time.sleep(2)
+            output = StreamOutput(self.mjpeg_file_path)
+            if self.DEBUG:
+                print("run_picamera: start_recording")
+            self.picam.start_recording(output, format='mjpeg')
+        except:
+           print('ERROR. run_picamera: Error setting up recording!')
+        
+        try:
+            while self.persistent_data['streaming']:
+                self.picam.wait_recording(2)
+        except Exception as ex:
+            print("ERROR. run_picamera: Error while getting image data from camera module: " + str(ex))
+        self.picam.stop_recording()
+        output.close()
+        print("at end of picamera thread. Does it close now?")
+        #self.join()
+        
+        
+        
     # Not useful on Raspian Bullseye yet, as libcamera has no python support yet...
-    def run_picamera(self):
+    def run_picamera_libcamera(self):
         print("in run_picamera. Should probably create mjpeg stream now.")
         
         
@@ -1124,7 +880,7 @@ class CandlecamAPIHandler(APIHandler):
                         'forms':[
                             {
                                 'rel':'alternate',
-                                'href':'/media/candlecam/stream/stream.mjpeg',
+                                'href':'/media/candlecam/stream/stream.mjpeg', #str(self.mjpeg_file_path),
                                 #'href':self.dash_file_path,
                                 'mediaType':'x-motion-jpeg' #video/x-jpeg or video/x-motion-jpeg ?
                                 #'mediaType': 'application/dash+xml'
@@ -1141,6 +897,9 @@ class CandlecamAPIHandler(APIHandler):
                         ]
                     }
                     
+                    
+        print("\nmjpeg_met: " + str(mjpeg_met))
+        print("\n")
                     
         snapshot_met = {'@type': 'ImageProperty',
                         'title': 'Snapshot',
@@ -1168,9 +927,11 @@ class CandlecamAPIHandler(APIHandler):
         
         
         #prop = Property.__init__(thing,'stream',Value(None),met)
-        prop = webthing.Property(thing,'stream',Value(None),met)
-        print("propped")
-        thing.add_property(prop)
+        
+        # The FFMPEG stream with audio. Disabled for now.
+        #prop = webthing.Property(thing,'stream',Value(None),met)
+        #print("propped")
+        #thing.add_property(prop)
         
         mjpeg_prop = webthing.Property(thing,'mjpeg-stream',Value(None),mjpeg_met)
         print("MJPEG propped")
@@ -1196,10 +957,14 @@ class CandlecamAPIHandler(APIHandler):
         
         
         
+        print("self.has_respeaker_hat: " + str(self.has_respeaker_hat))
         if self.has_respeaker_hat:
             
+            print("adding thing properties for respeaker hat")
+            
+            
             thing.add_property(
-                Prop(thing,
+                webthing.Property(thing,
                          'button',
                          self.button_state,
                          metadata={
@@ -1210,7 +975,7 @@ class CandlecamAPIHandler(APIHandler):
                          }))
                          
             thing.add_property(
-                Prop(thing,
+                webthing.Property(thing,
                          'volume',
                          Value(self.persistent_data['ringtone_volume'], lambda v: self.volume_change(v)),
                          metadata={
@@ -1224,7 +989,7 @@ class CandlecamAPIHandler(APIHandler):
                          }))
                      
             thing.add_property(
-                Prop(thing,
+                webthing.Property(thing,
                          'led_brightness',
                          Value(self.persistent_data['led_brightness'], lambda v: self.set_led(self.persistent_data['led_color'],v)),
                          metadata={
@@ -1238,7 +1003,7 @@ class CandlecamAPIHandler(APIHandler):
                          }))
                      
             thing.add_property(
-                Prop(thing,
+                webthing.Property(thing,
                          'led_color',
                          Value(self.persistent_data['led_color'], lambda v: self.set_led(v,self.persistent_data['led_brightness'])),
                          metadata={
@@ -1291,8 +1056,10 @@ class CandlecamAPIHandler(APIHandler):
         
         more_routes = [
             #(r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}),
-            (r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}),
-            (r"/media/candlecam/photos/(.*)", tornado.web.StaticFileHandler, {"path": self.media_photos_dir_path}),
+            
+            #(r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}),
+            #(r"/media/candlecam/photos/(.*)", tornado.web.StaticFileHandler, {"path": self.media_photos_dir_path}),
+            
             #(r"/media/candlecam/(.*)", tornado.web.StaticFileHandler, {"path": "/home/pi/.webthings/media/candlecam"}),
             #(r"/media/candlecam/(.*)", tornado.web.StaticFileHandler, {"path": "/home/pi/.webthings/media/candlecam"}),
             #(r"/media/(.*)", WebThingServer.tornado.web.StaticFileHandler, {"path": "/home/pi/.webthings/media"}),
@@ -1300,18 +1067,22 @@ class CandlecamAPIHandler(APIHandler):
             #(r"/static/(.*)", web.StaticFileHandler, {"path": "/var/www"}),
         ]
         
+        #more_routes.append( (r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}) )
+        more_routes.append( (r"/media/candlecam/stream/(.*)", StreamyHandler ) )
+        #more_routes.append( (r'/mjpg', StreamyHandler) ) 
+        
         #"""
         if self.DEBUG:
             print("starting thing server (will block)")
         try:
             self.thing_server = WebThingServer(SingleThing(thing), port=self.webthing_port, additional_routes=more_routes)
-            print("thing_server:")
+            print("thing_server dir:")
             print(str(dir(self.thing_server)))
             self.thing_server.start()
             print("thing server started")
         except Exception as ex:
-            print("Error starting thing server: " + str(ex))
-            self.adapter.send_pairing_prompt("Error starting server. Tip: reboot.");
+            print("ERROR starting thing server: " + str(ex))
+            self.adapter.send_pairing_prompt("Error starting server. Tip: reboot.")
         #while(True):
         #    sleep(1)
         #"""
@@ -1330,6 +1101,7 @@ class CandlecamAPIHandler(APIHandler):
 
     # This is called every 100 milliseconds
     def update_button(self):
+        #print("in update_button")
         if self.pressed:
             self.pressed = False
             if self.pressed_sent == False:
@@ -1345,7 +1117,7 @@ class CandlecamAPIHandler(APIHandler):
             if self.pressed_countdown == (self.pressed_countdown_time - 30): # Three seconds after the button being pressed...
                 self.pressed_sent = False
                 self.button_state.notify_of_external_update(False)
-                    
+        
         if self.pressed_countdown > 0:
             self.pressed_countdown -= 1
             #if self.DEBUG:
@@ -1420,8 +1192,8 @@ class CandlecamAPIHandler(APIHandler):
 
     def streaming_change(self,state):
         if self.DEBUG:
-            print("new streaming state: " + str(state))
-            
+            print("in streaming_change. new streaming state: " + str(state))
+            print("self.encode_audio: " + str(self.encode_audio))
         # START STREAMING
         if state:
             if self.DEBUG:
@@ -1429,6 +1201,8 @@ class CandlecamAPIHandler(APIHandler):
                 print("STREAMING ON")
             
             if self.encode_audio:
+                if self.DEBUG:
+                    print("encode_audio was true, calling ffmpeg()")
                 self.ffmpeg()
                 if self.DEBUG:
                     print("past self.ffmpeg in streaming_change STREAMING ON")
@@ -1436,8 +1210,12 @@ class CandlecamAPIHandler(APIHandler):
             else:
                 try:
                     if self.DEBUG:
-                        print("starting the PiCamera thread")
-                    self.ct = threading.Thread(target=self.run_picamera) #, args=(self.voice_messages_queue,))
+                        print("starting the PiCamera thread (run_picamera)")
+                    self.ct = threading.Thread(target=self.run_picamera)
+                    #self.ct = threading.Thread(target=self.run_picamera) #, args=(self.voice_messages_queue,))
+                    #self.ct = threading.Thread(target=self.ffmpeg_mjpeg) #, args=(self.voice_messages_queue,))
+                    #self.ffmpeg()
+                    #self.ffmpeg_mjpeg()
                     self.ct.daemon = True
                     self.ct.start()
                 except:
@@ -1488,15 +1266,16 @@ class CandlecamAPIHandler(APIHandler):
 
 
     def play_ringtone(self):
+        print('in play_ringtone')
         try:
             if str(self.persistent_data['ringtone']) != 'none':
-                ringtone_command = 'aplay -M -D plughw:1,0 ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) + str(self.persistent_data['ringtone_volume'])+  '.wav'
+                ringtone_command = 'aplay -M -D plughw:' + str(self.plughw_number) + ' ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) + str(self.persistent_data['ringtone_volume'])+  '.wav'
                 # --buffer-time=8000
                 #ringtone_command = 'SDL_AUDIODRIVER="alsa" AUDIODEV="hw:1,0" ffplay ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
                 #ringtone_command = 'ffplay -autoexit ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
             
-                #if self.DEBUG:
-                #    print("ringtone command: " + str(ringtone_command))
+                if self.DEBUG:
+                    print("ringtone command: " + str(ringtone_command))
             
                 ringtone_command_array = ringtone_command.split()
         
@@ -1535,10 +1314,13 @@ class CandlecamAPIHandler(APIHandler):
                 print('RGB =', str(rgb))
                 print('Brightness =', str(brightness))
             
-            self.lights.set_pixel(0, r, g, b, brightness)  # Pixel 1
-            self.lights.set_pixel(1, r, g, b, brightness)  # Pixel 2
-            self.lights.set_pixel(2, r, g, b, brightness)  # Pixel 3
-            self.lights.show()
+            if self.lights:
+                self.lights.set_pixel(0, r, g, b, brightness)  # Pixel 1
+                self.lights.set_pixel(1, r, g, b, brightness)  # Pixel 2
+                self.lights.set_pixel(2, r, g, b, brightness)  # Pixel 3
+                self.lights.show()
+            else:
+                print("set_led: lights was None?")
             
         except Exception as ex:
             print("could not set LED brightness: " + str(ex))
@@ -1579,10 +1361,10 @@ class CandlecamAPIHandler(APIHandler):
             
             
             
-        if 'Use microphone' in config:
-            self.encode_audio = bool(config['Use microphone'])
-            if self.DEBUG:
-                print("-Encode audio preference was in config: " + str(self.DEBUG))
+        #if 'Use microphone' in config:
+        #    self.encode_audio = bool(config['Use microphone'])
+        #    if self.DEBUG:
+        #        print("-Encode audio preference was in config: " + str(self.DEBUG))
         
         if 'Use ramdrive' in config:
             self.use_ramdrive = bool(config['Use ramdrive'])
@@ -1608,6 +1390,33 @@ class CandlecamAPIHandler(APIHandler):
                 print("-Clock preference was in config: " + str(self.clock))
 
 
+
+
+    def network_scan(self):
+        
+        # Satellite targets
+        gateways_ip_dict = arpa_detect_gateways()
+        print("initial self.gateways_ip_dict: " + str(gateways_ip_dict))
+        
+        gateways_ip_dict[self.own_ip] = socket.gethostname()
+        
+        satellite_targets = {}
+        for server in gateways_ip_dict:
+            print("server: " + str(server))
+            nbtscan_output = str(subprocess.check_output(['sudo','nbtscan','-q',str(server)]))
+            if len(nbtscan_output) > 10:
+                print("nbtscan_output: " + str(nbtscan_output))
+                shorter = nbtscan_output.split(" ",1)[1]
+                shorter = shorter.lstrip()
+                parts = shorter.split()
+                gateways_ip_dict[server] = parts[0]
+            #else:
+            #    satellite_targets[ip_address] = ip_address
+        
+        print("\nnew gateways_ip_dict: " + str(gateways_ip_dict))
+        
+        self.gateways_ip_dict = gateways_ip_dict
+        return gateways_ip_dict
 
 
 
@@ -1640,11 +1449,16 @@ class CandlecamAPIHandler(APIHandler):
                                     print('ajax handling init')
                                     print("self.persistent_data = " + str(self.persistent_data))
                                 
+                                try:
+                                    self.gateways_ip_dict = self.network_scan()
+                                except Exception as ex:
+                                    print("Error gettings gateways dict: " + str(ex))
+                                
                                 return APIResponse(
                                   status=200,
                                   content_type='application/json',
                                   #content=json.dumps({'state' : True, 'message' : 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
-                                  content=json.dumps({'state': True, 'own_ip': self.own_ip, 'message': 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
+                                  content=json.dumps({'state': True, 'own_ip': self.own_ip, 'message': 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'], 'gateways':self.gateways_ip_dict }),
                                   
                                 )
                                 
@@ -1660,6 +1474,25 @@ class CandlecamAPIHandler(APIHandler):
                                   content=json.dumps({'state' : True, 'message': 'settings saved succesfully'}),
                                 )
                                 
+                            elif action == 'grab_picture_from_stream':
+                                state = False
+                                filename = ""
+                                try:
+                                    if 'stream_url' in request.body:
+                                        stream_url = str(request.body['stream_url'])    
+                                    
+                                        if stream_url.endswith('mjpg') or stream_url.endswith('mjpeg'):
+                                            filename = self.grab_mjpeg_frame(stream_url)
+                                            if filename != "":
+                                                state = True
+                                except Exception as ex:
+                                    print("error grabbing image from stream: " + str(ex))
+                            
+                                return APIResponse(
+                                  status=200,
+                                  content_type='application/json',
+                                  content=json.dumps({'state' : state, 'message': '','filename':filename}),
+                                )
                             
                         except Exception as ex:
                             print("Error getting init data: " + str(ex))
@@ -1933,133 +1766,108 @@ class CandlecamAPIHandler(APIHandler):
         return result
 
 
-    def speak(self, voice_message="",intent='default'):
+
+    def grab_mjpeg_frame(self, stream_url):
+        found_jpeg = False
+        filename = ""
         try:
-
-            if intent == 'default':
-                intent = {'siteId':self.persistent_data['site_id']}
-
-            site_id = intent['siteId']
-
-            # Make the voice detection ignore Voco speaking for the next few seconds:
-            self.last_sound_activity = time.time() - 1
-            if self.DEBUG:
-                print("[...] speak: " + str(voice_message))
-                print("[...] intent: " + str(intent))
-                
-                
-            if not 'origin' in intent:
-                intent['origin'] = 'voice'
             
-            # text input from UI
-            if self.DEBUG:
-                print("in speak, site_id of intent is now: " + str(site_id) + " (my own is: " + str(self.persistent_data['site_id']) + ")")
-                print("in speak, intent_message['origin'] = " + str(intent['origin']))
+            looking_for_jpeg = True
+            looking_loops_counter = 0
             
-
-            if intent['origin'] == 'text':
-                if self.DEBUG:
-                    print("(...) response should be show as text: '" + voice_message + "' at: " + str(site_id))
-            else:
-                if self.DEBUG:
-                    print("in speak, origin was not text")
-
-                
-            if site_id == 'everywhere' or site_id == self.persistent_data['site_id']:
-                if self.DEBUG:
-                    print("handling speak LOCALLY")
-                if intent['origin'] == 'text':
-                    if self.DEBUG:
-                        print("setting self.last_text_response to: " + str(voice_message))
-                    self.last_text_response = voice_message # this will cause the message to be displayed in the UI.
-                    return
-                
-                #if self.orphaned and self.persistent_data['is_satellite']:
-                #    voice_message = "I am not connected to the main voco server. " + voice_message
+            print("grabbing jpeg from: " + str(stream_url))
             
-                if self.DEBUG:
-                    print("")
-                    print("(...) Speaking locally: '" + voice_message + "' at: " + str(site_id))
-                environment = os.environ.copy()
-                #FNULL = open(os.devnull, 'w')
-            
-                # unmute if the audio output was muted.
-                self.unmute()
-    
-                for option in self.audio_controls:
-                    if str(option['human_device_name']) == str(self.persistent_data['audio_output']):
-                        environment["ALSA_CARD"] = str(option['simple_card_name'])
-                        if self.DEBUG:
-                            print("Alsa environment variable for speech output set to: " + str(option['simple_card_name']))
-
-                        try:
-                            if self.nanotts_process != None:
-                                if self.DEBUG:
-                                    print("terminiating old nanotts")
-                                self.nanotts_process.terminate()
-                        except:
-                            if self.DEBUG:
-                                print("nanotts_process did not exist yet")
-    
-                        nanotts_volume = int(self.persistent_data['speaker_volume']) / 100
-    
-                        if self.DEBUG:
-                            print("nanotts_volume = " + str(nanotts_volume))
-    
-                        nanotts_path = str(os.path.join(self.snips_path,'nanotts'))
-    
-                        #nanotts_command = [nanotts_path,'-l',str(os.path.join(self.snips_path,'lang')),'-v',str(self.voice_accent),'--volume',str(nanotts_volume),'--speed',str(self.voice_speed),'--pitch',str(self.voice_pitch),'-w','-o',self.response_wav,"-i",str(voice_message)]
-                        #print(str(nanotts_command))
-                    
-                    
-                    
-                        # generate wave file
-                        self.echo_process = subprocess.Popen(('echo', str(voice_message)), stdout=subprocess.PIPE)
-                        self.nanotts_process = subprocess.run((nanotts_path,'-l',str(os.path.join(self.snips_path,'lang')),'-v',str(self.voice_accent),'--volume',str(nanotts_volume),'--speed',str(self.voice_speed),'--pitch',str(self.voice_pitch),'-w','-o',self.response_wav), capture_output=True, stdin=self.echo_process.stdout, env=environment)
-
-                    
-                        # play wave file
-                        try:
-                            # Play sound at the top of a second, so synchronise audio playing with satellites
-                            #print(str(time.time()))
-                            #initial_time = int(time.time())
-                            #while int(time.time()) == initial_time:
-                            #    sleep(0.001)
-                            
-                            #os.system("aplay -D plughw:" + str(self.current_card_id) + "," + str(self.current_device_id) + ' ' + self.response_wav )
-                            #speak_command = ["ffplay", "-nodisp", "-vn", "-infbuf","-autoexit", self.response_wav,"-volume","100"]
-                            
-                            # If a user is not using the default samplerate of 16000, then the wav file will have to be resampled.
-                            if self.sample_rate != 16000:
-                                os.system('ffmpeg -loglevel panic -y -i ' + self.response_wav + ' -vn -af aresample=out_sample_fmt=s16:out_sample_rate=' + str(self.sample_rate) + ' ' + self.response2_wav)
-                                speak_command = ["aplay","-D","plughw:" + str(self.current_card_id) + "," + str(self.current_device_id), self.response2_wav] #,"2>/dev/null"
-                                
-                            else:
-                                speak_command = ["aplay","-D","plughw:" + str(self.current_card_id) + "," + str(self.current_device_id), self.response_wav]
-                            
-                            
-                            if self.DEBUG:
-                                print("speak aplay command: " + str(speak_command))
+            stream = requests.get(stream_url, stream=True)
+            if stream.ok:
+                a = -1
+                b = -1
+                chunk_size = 1024
+                fresh_bytes = b''
+                for chunk in stream.iter_content(chunk_size=chunk_size):
+                    fresh_bytes += chunk
+                    try:
+                        looking_loops_counter += 1
+                        print(str(looking_loops_counter))
                         
-                            subprocess.run(speak_command, capture_output=True, shell=False, check=False, encoding=None, errors=None, text=None, env=None, universal_newlines=None)
+                        if looking_loops_counter > 1000:
+                            looking_for_jpeg = False
+                            print("Warning, reached maximum looking_loops_counter")
+                            break
                             
+                        if a == -1:
+                            a = fresh_bytes.find(b'\xff\xd8')
+                        b = fresh_bytes.find(b'\xff\xd9')
+                        print("bytes read. a: " + str(a))
+                        print("bytes read. b: " + str(b))
+                        if a != -1 and b != -1:
+                            jpg = fresh_bytes[a:b+2]
+                            fresh_bytes = fresh_bytes[b+2:]
+                
+                            filename = str(int(time.time())) + '.jpg'
+                            file_path = os.path.join( self.media_photos_dir_path,filename)
+                            with open(file_path, "wb") as fh:
+                                fh.write(jpg)
+                            found_jpeg = True
+                            looking_for_jpeg = False
+                            print("looking loops required: " + str(looking_loops_counter))
+                            break
+                        
+                        
                             
-                            #os.system('rm ' + self.response_wav)
-                            #subprocess.check_call(speak_command,stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                        except Exception as ex:
-                            print("Error playing spoken voice response: " + str(ex))
-        
-        
-            else:
-                if self.DEBUG:
-                    print("speaking: site_id '" + str(site_id) + "' is not relevant for this site, will publish to MQTT")
-                self.mqtt_client.publish("hermes/voco/" + str(site_id) + "/speak",json.dumps({"message":voice_message,"intent":intent}))
+                    except Exception as ex:
+                        print("Error in grab_mjpeg_frame for-loop: " + str(ex))
+                        
+            """
+            stream = urllib.request.urlopen(stream_url)
+            print(str(stream))
+            fresh_bytes = stream.read(1024)
+            looking_for_jpeg = True
+            looking_loops_counter = 0
+            a = -1
+            b = -1
+            while looking_for_jpeg:
+                looking_loops_counter += 1
+                print(str(looking_loops_counter))
+                fresh_bytes += stream.read(1024)
+                print("fresh_bytes read")
+                if a == -1:
+                    a = fresh_bytes.find(b'\xff\xd8')
+                b = fresh_bytes.find(b'\xff\xd9')
+                print("bytes read. a: " + str(a))
+                print("bytes read. b: " + str(b))
+                if a != -1 and b != -1:
+                    print("found beginning and end of jpeg")
+                    jpg = fresh_bytes[a:b+2]
+                    fresh_bytes = fresh_bytes[b+2:]
+                
+                    filename = str(int(time.time())) + '.jpg'
+                    file_path = os.path.join( self.media_photos_dir_path,filename)
+                    with open(file_path, "wb") as fh:
+                        fh.write(jpg)
+                    
+                    looking_for_jpeg = False
+                    found_jpeg = True
+                    print("looking loops required: " + str(looking_loops_counter))
             
-                #self.mqtt_client.publish("hermes/voco/" + str(payload['siteId']) + "/play",json.dumps({"sound_file":"start_of_input"}))
+                if looking_loops_counter > 1000:
+                    looking_for_jpeg = False
+                    print("Warning, reached maximum looking_loops_counter")
             
+            """
+                        
         except Exception as ex:
-            print("Error speaking: " + str(ex))
-            
+            print("Error in grab_mjpeg_frame: " + str(ex))
+        return filename
+
+
+
+
+
+
+
+
+
+
             
 
     #
@@ -2144,6 +1952,85 @@ class CandlecamAdapter(Adapter):
         
 
 
+#
+#  PICAMERA CLASSES
+#
+
+class StreamOutput(object):
+    def __init__(self,file_path):
+        self.snapshot = None
+        
+        self.mjpeg_file_path = file_path
+        
+        self.last_write_time = 0
+
+    def write(self, buf):
+        #global new_frame
+        global frame
+        if buf.startswith(b'\xff\xd8'):
+            self.snapshot = io.BytesIO()
+            #self.snapshot.seek(0)
+        self.snapshot.write(buf)
+        if buf.endswith(b'\xff\xd9'):
+            #self.snapshot.close()
+            frame = self.snapshot
+            
+            if time.time() - 1 > self.last_write_time:
+                self.last_write_time = time.time()
+                with open(self.mjpeg_file_path, "wb") as binary_file:
+                    #print("saving jpg as mjpeg")
+                    # Write bytes to file
+                    binary_file.write(frame.getvalue())
+            
+    def close(self):
+        self.snapshot.close()
+
+
+class StreamyHandler(tornado.web.RequestHandler):
+
+    #@tornado.web.asynchronous
+    @tornado.gen.coroutine
+    def get(self,something):
+        print("in StreamyHandler get. something: " + str(something))
+        global frame
+        #global new_frame
+        #global candlecammy
+            
+        mjpg_interval = .1
+        #ioloop = tornado.ioloop.IOLoop.current()
+        my_boundary = "--jpgboundary"
+        self.served_image_timestamp = time.time()
+        
+        #self.set_header('Cache-Control', 'no-cache, private')
+        self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
+        self.set_header('Pragma', 'no-cache')
+        #self.set_header('Connection', 'close')
+        self.set_header('Content-Type', 'multipart/x-mixed-replace;boundary=--jpgboundary')
+        self.flush()
+        
+        while True:
+            try:
+                self.write(my_boundary + '\r\n')
+                self.write("Content-type: image/jpeg\r\n")
+                self.write("Content-length: %s\r\n\r\n" % frame.getbuffer().nbytes)
+                self.write(frame.getvalue())
+                
+                self.write('\r\n')
+                self.served_image_timestamp = time.time()
+                #print(str(self.served_image_timestamp))
+                self.flush()
+                yield tornado.gen.sleep(.1)
+            except Exception as ex:
+                print("Error posting frame: " + str(ex))
+                break
+        
+    def on_finish(self):
+        print("in on_finish")
+        pass
+
+
+
+
 def get_ip():
     """
     Get the default local IP address.
@@ -2202,3 +2089,87 @@ def run_command(cmd, timeout_seconds=20):
 
     except Exception as e:
         print("Error running command: "  + str(e))
+
+
+#
+#  A quick scan of the network.
+#
+def arpa_detect_gateways(quick=True):
+    command = "arp -a"
+    gateway_list = []
+    gateway_dict = {}
+    try:
+        
+        s = requests.Session()
+        s.mount('http://', HTTPAdapter(max_retries=0))
+        s.mount('https://', HTTPAdapter(max_retries=0))
+        
+        result = subprocess.run(command, shell=True, universal_newlines=True, stdout=subprocess.PIPE) #.decode())
+        for line in result.stdout.split('\n'):
+            print(str(line))
+            if len(line) > 10:
+                
+                #if quick and "<incomplete>" in line:
+                #    print("skipping incomplete ip")
+                #    continue
+                    
+                #print("--useable")
+                #name = "?"
+
+                try:
+                    ip_address_list = re.findall(r'(?:\d{1,3}\.)+(?:\d{1,3})', str(line))
+                    #print("ip_address_list = " + str(ip_address_list))
+                    ip_address = str(ip_address_list[0])
+                    if not valid_ip(ip_address):
+                        continue
+                        
+                    #print("found valid IP address: " + str(ip_address))
+                    try:
+                        test_url_a = 'http://' + str(ip_address) + "/"
+                        test_url_b = 'https://' + str(ip_address) + "/"
+                        html = ""
+                        try:
+                            response = s.get(test_url_a, allow_redirects=True, timeout=1)
+                            #print("http response: " + str(response.content.decode('utf-8')))
+                            html += response.content.decode('utf-8').lower()
+                        except Exception as ex:
+                            #print("Error scanning network for gateway using http: " + str(ex))
+                            
+                            
+                            try:
+                                response = s.get(test_url_b, allow_redirects=True, timeout=1)
+                                #print("https response: " + str(response.content.decode('utf-8')))
+                                html += response.content.decode('utf-8').lower()
+                            except Exception as ex:
+                                #print("Error scanning network for gateway using https: " + str(ex))
+                                pass
+                            
+                        if 'webthings' in html:
+                            print("arp: WebThings controller spotted at: " + str(ip_address))
+                            #print(str(response.content.decode('utf-8')))
+                            if ip_address not in gateway_list:
+                                gateway_list.append(ip_address) #[ip_address] = "option"
+                            
+                            gateway_dict[ip_address] = ip_address #[ip_address] = "option"
+                    
+                    except Exception as ex:
+                        print("Error: could not analyse IP from arp -a line: " + str(ex))
+                        
+                except Exception as ex:
+                    print("no IP address in line: " + str(ex))
+                    
+               
+                
+    except Exception as ex:
+        print("Arp -a error: " + str(ex))
+        
+    #return gateway_list
+    return gateway_dict
+
+
+def valid_ip(ip):
+    return ip.count('.') == 3 and \
+        all(0 <= int(num) < 256 for num in ip.rstrip().split('.')) and \
+        len(ip) < 16 and \
+        all(num.isdigit() for num in ip.rstrip().split('.'))
+        

@@ -4,32 +4,32 @@
         
         
         <div id="extension-candlecam-picture-holder">
-            <video id="extension-candlecam-shaka-video"
+            <!--<video id="extension-candlecam-shaka-video"
                    width="640"
                    poster="/media/candlecam/stream/latest.jpg"
-                   controls autoplay></video>
+                   controls autoplay></video>-->
+            <img id="extension-candlecam-picture" src="/media/candlecam/stream/stream.mjpeg">
                    
             <div id="extension-candlecam-main-buttons-container">
-                <div id="extension-candlecam-main-door-buttons-container" class="extension-candlecam-hidden">
-                    <button id="extension-candlecam-door-release-button" class="icon-button" data-l10n-id="door-release-button" aria-label="Open door"></button>
-                    <button id="extension-candlecam-door-close-button" class="icon-button" data-l10n-id="door-close-button" aria-label="Close door"></button>
+                <div id="extension-candlecam-main-door-buttons-container" class="extension-candlecam-hiddenX">
+                    <button id="extension-candlecam-door-release-button" class="icon-button extension-candlecam-hidden" aria-label="Open door"></button>
+                    <button id="extension-candlecam-door-close-button" class="icon-button extension-candlecam-hidden" aria-label="Close door"></button>
                 </div>
+                <button id="extension-candlecam-save-picture-button" class="icon-button" aria-label="Save picture"></button>
             </div>
                    
             <div id="extension-candlecam-clock-container"><div id="extension-candlecam-clock"></div></div>
-            <div id="extension-candlecam-picture-exit-container"><div id="extension-candlecam-picture-exit">Overview</div></div>
+            <div id="extension-candlecam-picture-exit-container">
+                <div id="extension-candlecam-picture-exit">Overview</div>
+                <div id="extension-candlecam-stream-buttons-container">buttons here</div>
+            </div>
         </div>
         
         
         <div id="extension-candlecam-overview" class="extension-candlecam-hidden">
-            <h3>Photos overview</h3>
+            <h3>Saved photos</h3>
             <ul id="extension-candlecam-photos-list"></ul>
-            <div id="extension-candlecam-dropzone">
-                <div>Drop files here to upload</div>
-            </div>
-
-           <input id="extension-candlecam-photos-file-selector"  accept=".gif,.png,.jpg,.jpeg,image/gif,image/png,image/jpeg" type="file" />
-        
+            
             <div id="extension-candlecam-response">
                 <p id="extension-candlecam-response-data"></p>
             </div>

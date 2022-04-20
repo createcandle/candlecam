@@ -98,6 +98,112 @@
         */
 
 
+
+        get_things(){
+    	    API.getThings().then((things) => {
+		
+                const camera_source_select = document.getElementById('extension-candlecam-camera-source-select');
+                const push_button_select = document.getElementById('extension-candlecam-push-button-select');
+                const door_release_select = document.getElementById('extension-candlecam-door-release-select');
+        
+                console.log("GOT THINGS");
+                console.log(this.thing_settings);
+                if(this.thing_settings != null){
+                    console.log("this.thing_settings.camera_source_thing_id: ", this.thing_settings.camera_source_thing_id);
+                    console.log("this.thing_settings['camera_source_thing_id'] = " + this.thing_settings['camera_source_thing_id'] );
+                }
+                
+    			this.all_things = things;
+        
+    			// pre-populate the hidden 'new' item with all the thing names
+    			var thing_ids = [];
+    			var thing_titles = [];
+		
+    			for (let key in things){
+
+    				var thing_title = 'unknown';
+    				if( things[key].hasOwnProperty('title') ){
+    					thing_title = things[key]['title'];
+    				}
+    				else if( things[key].hasOwnProperty('label') ){
+    					thing_title = things[key]['label'];
+    				}
+                    //console.log(thing_title);
+            
+                    var thing_id = things[key]['href'].substr(things[key]['href'].lastIndexOf('/') + 1);
+                    thing_ids.push( things[key]['href'].substr(things[key]['href'].lastIndexOf('/') + 1) );
+        
+    				var property_lists = this.get_property_lists(things[key]['properties'],'videoProperty');
+			
+                    //for (let prop in property_lists['property1_list']){
+                    for (var i = 0; i < property_lists['property1_list'].length; i++) {
+    				//if(property_lists['property1_list'].length > 0){
+    					//console.log(i);
+                        //console.log("adding thing to source list because it has a video Property");
+                        var selected_state = false;
+                        if(this.thing_settings != null){
+                            //console.log("thing settings existed in body");
+                            //if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
+                            //console.log("this.thing_settings['camera_source_thing_id'] = " + this.thing_settings['camera_source_thing_id'] );
+                            //console.log("=?= thing_id = " + thing_id);
+                            if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
+                                //console.log("setting option as selected");
+                                selected_state = true;
+                            }
+                        }
+    					camera_source_select.options[camera_source_select.options.length] = new Option(thing_title + " - " + property_lists['property1_list'][i], thing_id + "_____" + property_lists['property1_system_list'][i],false,selected_state);
+    				}
+            
+            
+                    property_lists = this.get_property_lists(things[key]['properties'],'boolean');
+			
+                    //for (let prop in property_lists['property1_list']){
+                    for (var i = 0; i < property_lists['property1_list'].length; i++) {
+    				//if(property_lists['property1_list'].length > 0){
+    					//console.log("adding thing to source list because it has a boolean Property");
+                        var selected_state = false;
+                        if(this.thing_settings != null){
+                            //console.log("thing settings existed in body");
+                            //if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
+                            if(thing_id == this.thing_settings['push_button_thing_id']  && property_lists['property1_system_list'][i] == this.thing_settings['push_button_property_id']){
+                                //console.log("setting option as selected");
+                                selected_state = true;
+                            }
+                        }
+                        push_button_select.options[push_button_select.options.length] = new Option(thing_title + " - " + property_lists['property1_list'][i], thing_id + "_____" + property_lists['property1_system_list'][i],false,selected_state);
+				
+    				}
+            
+                    property_lists = this.get_property_lists(things[key]['properties'],'actuator-boolean');
+			
+                    //for (let prop in property_lists['property1_list']){
+                    for (var i = 0; i < property_lists['property1_list'].length; i++) {
+    				//if(property_lists['property1_list'].length > 0){
+    					//console.log("adding thing to source list because it has a boolean Property");
+                        var selected_state = false;
+                        if(this.thing_settings != null){
+                            //console.log("thing settings existed in body");
+                            //console.log("_");
+                            //console.log(property_lists['property1_system_list'][i]);
+                            //console.log(this.thing_settings['door_release_property_id']);
+                            //if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
+                            if(thing_id == this.thing_settings['door_release_thing_id']  && property_lists['property1_system_list'][i] == this.thing_settings['door_release_property_id']){
+                                //console.log("setting option as selected");
+                                selected_state = true;
+                            }
+                        }
+    					door_release_select.options[door_release_select.options.length] = new Option(thing_title + " - " + property_lists['property1_list'][i], thing_id + "_____" + property_lists['property1_system_list'][i],false,selected_state);
+    				}
+				
+            
+                }
+                this.generate_ui();
+            });
+        }
+
+
+
+
         show() {
     		if(this.content == ''){
     			return;
@@ -110,33 +216,16 @@
     		const pre = document.getElementById('extension-candlecam-response-data');
     		const thing_list = document.getElementById('extension-candlecam-thing-list');
 
-            const camera_source_select = document.getElementById('extension-candlecam-camera-source-select');
-            const push_button_select = document.getElementById('extension-candlecam-push-button-select');
-            const door_release_select = document.getElementById('extension-candlecam-door-release-select');
+            //const camera_source_select = document.getElementById('extension-candlecam-camera-source-select');
+            //const push_button_select = document.getElementById('extension-candlecam-push-button-select');
+            //const door_release_select = document.getElementById('extension-candlecam-door-release-select');
 
 
     		pre.innerText = "";
 		
     		var this_object = this;
 		
-    		if( window.innerHeight == screen.height) {
-    			//console.log("fullscreen");
-    			document.getElementById('extension-candlecam-photos-file-selector').outerHTML = "";
-    			document.getElementById('extension-candlecam-dropzone').outerHTML = "";
-			
-    		}
-    		else{
-    			//console.log("Attaching file listeners");
-    			document.getElementById("extension-candlecam-photos-file-selector").addEventListener('change', () => {
-    				var filesSelected = document.getElementById("extension-candlecam-photos-file-selector").files;
-    				this.upload_files(filesSelected);
-    			});
-			
-    			this.createDropzoneMethods();
-    		}
-        
-        
-            console.log(API);
+            //console.log(API);
         
             window.API.postJson(
               `/extensions/candlecam/api/ajax`,
@@ -150,108 +239,65 @@
                 //console.log(body_parsed);
                 //this.thing_settings = JSON.parse(body['thing_settings']);
                 this.thing_settings = body['thing_settings'];
+                
                 // Reveal settings button
-    			this.removeClass(document.getElementById('extension-candlecam-settings-button'),"extension-candlecam-hidden");
-        	    API.getThings().then((things) => {
-			
-            
-                    console.log("GOT THINGS");
-                    console.log(this.thing_settings);
-                    if(this.thing_settings != null){
-                        console.log(this.thing_settings.camera_source_thing_id);
-                        console.log("this.thing_settings['camera_source_thing_id'] = " + this.thing_settings['camera_source_thing_id'] );
-                    }
+                if(document.getElementById('extension-candlecam-settings-button') != null){
+                    this.removeClass(document.getElementById('extension-candlecam-settings-button'),"extension-candlecam-hidden");
+                }
+    			
+                
+                let stream_buttons_container = document.getElementById('extension-candlecam-stream-buttons-container');
+                if(stream_buttons_container != null){
+                    stream_buttons_container.innerHTML = '';
                     
-        			this.all_things = things;
-            
-        			// pre-populate the hidden 'new' item with all the thing names
-        			var thing_ids = [];
-        			var thing_titles = [];
-			
-        			for (let key in things){
-
-        				var thing_title = 'unknown';
-        				if( things[key].hasOwnProperty('title') ){
-        					thing_title = things[key]['title'];
-        				}
-        				else if( things[key].hasOwnProperty('label') ){
-        					thing_title = things[key]['label'];
-        				}
-                        //console.log(thing_title);
-                
-                        var thing_id = things[key]['href'].substr(things[key]['href'].lastIndexOf('/') + 1);
-                        thing_ids.push( things[key]['href'].substr(things[key]['href'].lastIndexOf('/') + 1) );
-            
-        				var property_lists = this.get_property_lists(things[key]['properties'],'videoProperty');
-				
-                        //for (let prop in property_lists['property1_list']){
-                        for (var i = 0; i < property_lists['property1_list'].length; i++) {
-        				//if(property_lists['property1_list'].length > 0){
-        					//console.log(i);
-                            //console.log("adding thing to source list because it has a video Property");
-                            var selected_state = false;
-                            if(this.thing_settings != null){
-                                //console.log("thing settings existed in body");
-                                //if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
-                                //console.log("this.thing_settings['camera_source_thing_id'] = " + this.thing_settings['camera_source_thing_id'] );
-                                //console.log("=?= thing_id = " + thing_id);
-                                if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
-                                    //console.log("setting option as selected");
-                                    selected_state = true;
-                                }
-                            }
-        					camera_source_select.options[camera_source_select.options.length] = new Option(thing_title + " - " + property_lists['property1_list'][i], thing_id + "_____" + property_lists['property1_system_list'][i],false,selected_state);
-        				}
-                
-                
-                        property_lists = this.get_property_lists(things[key]['properties'],'boolean');
-				
-                        //for (let prop in property_lists['property1_list']){
-                        for (var i = 0; i < property_lists['property1_list'].length; i++) {
-        				//if(property_lists['property1_list'].length > 0){
-        					//console.log("adding thing to source list because it has a boolean Property");
-                            var selected_state = false;
-                            if(this.thing_settings != null){
-                                //console.log("thing settings existed in body");
-                                //if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
-                                if(thing_id == this.thing_settings['push_button_thing_id']  && property_lists['property1_system_list'][i] == this.thing_settings['push_button_property_id']){
-                                    //console.log("setting option as selected");
-                                    selected_state = true;
-                                }
-                            }
-                            push_button_select.options[push_button_select.options.length] = new Option(thing_title + " - " + property_lists['property1_list'][i], thing_id + "_____" + property_lists['property1_system_list'][i],false,selected_state);
-					
-        				}
-                
-                        property_lists = this.get_property_lists(things[key]['properties'],'actuator-boolean');
-				
-                        //for (let prop in property_lists['property1_list']){
-                        for (var i = 0; i < property_lists['property1_list'].length; i++) {
-        				//if(property_lists['property1_list'].length > 0){
-        					//console.log("adding thing to source list because it has a boolean Property");
-                            var selected_state = false;
-                            if(this.thing_settings != null){
-                                //console.log("thing settings existed in body");
-                                //console.log("_");
-                                //console.log(property_lists['property1_system_list'][i]);
-                                //console.log(this.thing_settings['door_release_property_id']);
-                                //if(thing_id == this.thing_settings['camera_source_thing_id'] && property_lists['property1_system_list'][i] == this.thing_settings['camera_source_property_id']){
-                                if(thing_id == this.thing_settings['door_release_thing_id']  && property_lists['property1_system_list'][i] == this.thing_settings['door_release_property_id']){
-                                    //console.log("setting option as selected");
-                                    selected_state = true;
-                                }
-                            }
-        					door_release_select.options[door_release_select.options.length] = new Option(thing_title + " - " + property_lists['property1_list'][i], thing_id + "_____" + property_lists['property1_system_list'][i],false,selected_state);
-        				}
-    				
-                
+        			var stream_urls = [];
+                    if(typeof body['gateways'] != 'undefined'){
+                        console.log("got gateways: ", body['gateways']);
+                        console.log("got gateways typeof: ", typeof body['gateways']);
+                        console.log("gateways length: ", Object.keys(body['gateways']).length );
+                        const gateways_keys = Object.keys(body['gateways']);
+                        console.log('gateways_keys: ', gateways_keys);
+                        for (var g = 0; g < Object.keys(body['gateways']).length; g++){
+                            console.log(g, gateways_keys[g]);
+                            let gateway = body['gateways'][ gateways_keys[g] ];
+                            console.log("name: ", gateway);
+                            const stream_url = 'http://' + gateways_keys[g] + ':8889/media/candlecam/stream/stream.mjpeg';
+                            stream_urls.push( stream_url );
+                        
+                        
+                            var button_el = document.createElement('button');
+                            //i.setAttribute("type", "text");
+                            button_el.innerText = gateway;
+                            button_el.classList.add('text-button');
+                            button_el.setAttribute("data-stream-url", stream_url );
+                        
+                            button_el.addEventListener('click', (event) => {
+        			            console.log('stream button clicked. Event: ', event.target);
+                                //event.stopImmediatePropagation();
+                                let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
+                                console.log("desired_stream_url: ", desired_stream_url);
+                            
+                                document.getElementById('extension-candlecam-picture').src = desired_stream_url;
+                                
+                                document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", desired_stream_url );
+                                
+                            });
+                            stream_buttons_container.appendChild(button_el);
+                        }
                     }
-                    this.generate_ui();
-                });
+                    console.log("final stream_urls: ", stream_urls);
+                
+                    if(stream_urls.length > 0){
+                        document.getElementById('extension-candlecam-picture').src = stream_urls[0];
+                        this.grab_mjpeg_frame(stream_urls[0]);
+                    }
+                }
+                
+                this.get_things();
             
             }).catch((e) => {
             	//pre.innerText = e.toString();
-      			console.log("Candle cam: error during init phase: " + e.toString());
+      			console.log("Candle cam: init error: ", e);
             });
         
         
@@ -370,13 +416,55 @@
 
     		// EVENT LISTENERS
 
-    		document.getElementById("extension-candlecam-picture-exit").addEventListener('click', () => {
-    			event.stopImmediatePropagation();
-    			const picture = document.getElementById('extension-candlecam-picture-holder');
-    			const overview = document.getElementById('extension-candlecam-overview');
-    			this.removeClass(overview,"extension-candlecam-hidden");
-    			this.addClass(picture,"extension-candlecam-hidden");
+            // Save picture button
+    		document.getElementById("extension-candlecam-save-picture-button").addEventListener('click', (event) => {
+                
+                let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
+                console.log("save picture: desired_stream_url: ", desired_stream_url);
+                
+    	        window.API.postJson(
+    	          `/extensions/candlecam/api/ajax`,
+                    {'action':'grab_picture_from_stream',
+                    'stream_url':desired_stream_url}
+                    
+    	        ).then((body) => {
+    	  			console.log("grab_picture_from_stream returned:");
+    	  			console.log(body);
+    	        }).catch((e) => {
+    	  			console.log("Candlecam: error doing grab_picture_from_stream request: ", e);
+    	        });
+                
     		});
+            
+            
+            
+            // door release button
+            document.getElementById("extension-candlecam-door-release-button").addEventListener('click', () => {
+                console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
+                const property_id = this.thing_settings.door_release_property_id;
+                const message = JSON.parse(`{ "${this.thing_settings.door_release_property_id}": true}`);
+                console.log(message);
+                API.putJson(`/things/${this.thing_settings.door_release_thing_id}/properties/${this.thing_settings.door_release_property_id}`, message);
+            });
+        
+            // door close button
+            document.getElementById("extension-candlecam-door-close-button").addEventListener('click', () => {
+                console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
+                const property_id = this.thing_settings.door_release_property_id;
+                const message = JSON.parse(`{ "${this.thing_settings.door_release_property_id}": false}`);
+                console.log(message);
+                API.putJson(`/things/${this.thing_settings.door_release_thing_id}/properties/${this.thing_settings.door_release_property_id}`, message);
+            });
+            
+            
+            // show saved pictures archive button
+            document.getElementById("extension-candlecam-picture-exit").addEventListener('click', () => {
+            
+            });
+            
+            
+            
+            
 			
     		/*	
     		document.getElementById("extension-candlecam-picture-holder").addEventListener('click', () => {
@@ -395,7 +483,8 @@
     			//const overview = document.getElementById('extension-candlecam-overview');
                 if(this.hasClass(settings_view,'extension-candlecam-hidden')){
                     this.removeClass(settings_view,"extension-candlecam-hidden");
-                }else{
+                }
+                else{
                     this.addClass(settings_view,"extension-candlecam-hidden");
                 
                     const camera_source_select = document.getElementById('extension-candlecam-camera-source-select');
@@ -434,116 +523,16 @@
                 }
     		});
         
-            document.getElementById("extension-candlecam-door-release-button").addEventListener('click', () => {
-                console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
-                const property_id = this.thing_settings.door_release_property_id;
-                const message = JSON.parse(`{ "${this.thing_settings.door_release_property_id}": true}`);
-                console.log(message);
-                API.putJson(`/things/${this.thing_settings.door_release_thing_id}/properties/${this.thing_settings.door_release_property_id}`, message);
-            });
-        
-            document.getElementById("extension-candlecam-door-close-button").addEventListener('click', () => {
-                console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
-                const property_id = this.thing_settings.door_release_property_id;
-                const message = JSON.parse(`{ "${this.thing_settings.door_release_property_id}": false}`);
-                console.log(message);
-                API.putJson(`/things/${this.thing_settings.door_release_thing_id}/properties/${this.thing_settings.door_release_property_id}`, message);
-            });
-        
-			
-
-    		// Get list of photos (as well as other variables)
-			
-          	window.API.postJson(
-            	`/extensions/${this.id}/api/list`,
-    				{'init':1}
-			
-    		).then((body) => {
-    				this_object.settings = body['settings'];
-    				this_object.interval = body['settings']['interval'];
-    				this_object.contain = body['settings']['contain'];
-    				this_object.clock = body['settings']['clock'];
-		
-    		if( this_object.contain ){
-    			//console.log("Contain the image");
-    			document.getElementById('extension-candlecam-picture-holder').style.backgroundSize = "contain";
-    		}
-    		else{
-    			//console.log("Do not contain the image");
-    			document.getElementById('extension-candlecam-picture-holder').style.backgroundSize = "cover";
-    		}
-		
-		
-    		// Interval
-    		this_object.photo_interval = setInterval(function () {
-    				//console.log("intervallo");
-    				this_object.change_picture();
-
-    		}, this_object.interval * 1000);
-		
-    		if( body['data'].length > 0 ){
-    			this_object.filenames = body['data'];
-    			this_object.show_list(body['data']);
-    			this_object.change_picture();
-    		}
-		
-
-    		if(this_object.clock){
-    			// Start clock
-    			clearInterval(window.candlecam_clock_interval); 
-			
-    			window.candlecam_clock_interval = setInterval(function () {
-    				//console.log("Clock tick");
-				
-    				var hour_padding = "";
-    				var minute_padding = "";
-				
-    				var date = new Date(); /* creating object of Date class */
-    				var hour = date.getHours();
-    				var min = date.getMinutes();
-    				var sec = date.getSeconds();
-	
-    				if( min < 10 ){
-    					minute_padding = "0";
-    				}
-    				if( hour < 10 ){
-    					hour_padding = "0";
-    				}
-				
-    				clock_element.innerText = hour + ":" + minute_padding + min;
-	
-    			}, 1000);
-    		}
             
-
-          	}).catch((e) => {
-            	//pre.innerText = e.toString();
-    			console.log("Photo frame: error in show list function: " + e.toString());
-          	});
 	  
-	  
-    	  	// Set interval to keep the screen awake
-    		this_object.wake_interval = setInterval(function () {
-    			//console.log("Sending wake command");
-    	        window.API.postJson(
-    	          `/extensions/candlecam/api/wake`,
-    	  				{'init':1}
-
-    	        ).then((body) => {
-    	  			//console.log("wake returned:");
-    	  			//console.log(body);
-    	        }).catch((e) => {
-    	        	//pre.innerText = e.toString();
-    	  			console.log("Photo frame: error in keep awake function: " + e.toString());
-    	        });
-			
-    		}, 30000);
-	  
-        } // and of show function
+        } // end of show function
 		
 		
+        
+        
     	hide(){
 		
+            /*
     		try {
     			window.clearInterval(this.photo_interval);
     		}
@@ -559,9 +548,34 @@
     			console.log("Could not clear keep awake interval");
     			console.log(e); //logMyErrors(e); // pass exception object to error handler
     		}
+            */
             
             this.view.innerHTML = "";
     	}
+
+
+
+        grab_mjpeg_frame(stream_url){
+            
+            window.API.postJson(
+              `/extensions/candlecam/api/ajax`,
+      				{'action':'grab_mjpeg_frame',
+                    'stream_url': stream_url}
+
+            ).then((body) => {
+      			console.log("grab_mjeg_frame returned:");
+      			console.log(body);
+                //body_parsed = JSON.parse(body);
+                //console.log(body_parsed);
+                //this.thing_settings = JSON.parse(body['thing_settings']);
+            
+            }).catch((e) => {
+            	//pre.innerText = e.toString();
+      			console.log("Candle cam: grab_mjpeg_frame error: ", e);
+            });
+            
+            
+        }
 
 
 
@@ -762,60 +776,10 @@
     	}
 
 
-    	upload_files(files){
-    		if (files && files[0]) {
-			
-    			var filename = files[0]['name'];
-    				//console.log(filename);
-    		    var FR = new FileReader();
-
-    				var this_object = this;
-    		    FR.addEventListener("load", function(e) {
-			
-    				var this_object2 = this_object;
-    				window.API.postJson(
-    		        	`/extensions/candlecam/api/save`,
-    		        	{'action':'upload', 'filename':filename, 'filedata':e.target.result, 'parts_total':1, 'parts_current':1}
-
-    			      ).then((body) => {
-    			        this_object.show_list(body['data']);
-
-    			      }).catch((e) => {
-    					  document.getElementById('extension-candlecam-response-data').innerText = e.toString();
-    			      });
-			
-    		    }); 
-
-    		    FR.readAsDataURL( files[0] );
-    	  	}
-    	}
+    	
 
 
 
-    	createDropzoneMethods() {
-    	    let dropzone = document.getElementById("extension-candlecam-dropzone");
-    			const pre = document.getElementById('extension-candlecam-response-data');
-
-    			var this_object = this;
-    	    dropzone.ondragover = function() {
-    	        this.className = "extension-candlecam-dragover";
-    	        return false;
-    	    }
-
-    	    dropzone.ondragleave = function() {
-    	        this.className = "";
-    	        return false;
-    	    }
-
-    	    dropzone.ondrop = function(e) {
-    	        // Stop browser from simply opening that was just dropped
-    	        e.preventDefault();  
-    	        // Restore original dropzone appearance
-    	        this.className = "";
-    			var files = e.dataTransfer.files;
-    			this_object.upload_files(files);
-    	    }    
-    	}
     
 
     	//
