@@ -3,9 +3,22 @@
 	background-color:rgba(255,255,255,.1);
 }
 
+
+
+
 #extension-candlecam-overview{
 	margin-top:6rem;
+    display:none;
 }
+
+.extension-candlecam-show-overview #extension-candlecam-overview{
+    display:block;
+}
+
+.extension-candlecam-show-overview #extension-candlecam-picture-holder{
+    display:none;
+}
+
 
 #extension-candlecam-picture-holder{
 	background-color:black;
@@ -263,6 +276,10 @@ LIST
     text-align: right;
     height: 8rem;
     padding-right: 2rem;
+    position:fixed;
+    top:2rem;
+    right:2rem;
+    width:calc(100vw - 10rem);
 }
 
 #extension-candlecam-settings-button{
@@ -309,13 +326,25 @@ LIST
     position:relative;
 }
 
+#extension-candlecam-main-door-buttons-container{
+    display:inline-block;
+}
+#extension-candlecam-main-door-buttons-container button{
+    margin-left:4rem;
+}
+
 #extension-candlecam-main-buttons-container button:hover{
     opacity:1;
 }
 
-
+/*
 #extension-candlecam-main-buttons-container button:not(:first-child){
     margin-left:4rem;
+}
+*/
+
+#extension-candlecam-save-picture-button{
+    background-image: url('../images/save-icon.svg');
 }
 
 #extension-candlecam-door-release-button{

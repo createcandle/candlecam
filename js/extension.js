@@ -7,9 +7,9 @@
 
 	      	this.content = '';
 			//var filenames = [];
-			this.filenames = [];
+			//this.filenames = [];
 			window.candlecam_filenames = [];
-
+            this.saved_photos_list = []
 
 			this.interval = 30;
 			this.contain = true;
@@ -42,7 +42,7 @@
 	    }
 		
 		
-		
+		/*
 		change_picture(){
 			
 			if( window.candlecam_filenames.length > 0 ){
@@ -51,12 +51,12 @@
 				this.show_file(random_file);
 			}
 		}
-
+        */
 
 		create_thing_list(body){
 			//console.log("Creating main thing list");
 			
-			const pre = document.getElementById('extension-candlecam-response-data');
+			//const pre = document.getElementById('extension-candlecam-response-data');
 			const thing_list = document.getElementById('extension-candlecam-thing-list');
 
 			for (var key in body['data']) {
@@ -67,7 +67,7 @@
 				
 				var node = document.createElement("LI");
 			}
-			pre.innerText = "";
+			//pre.innerText = "";
 		}
 		
 	
@@ -168,6 +168,8 @@
                             if(thing_id == this.thing_settings['push_button_thing_id']  && property_lists['property1_system_list'][i] == this.thing_settings['push_button_property_id']){
                                 //console.log("setting option as selected");
                                 selected_state = true;
+                                
+                                document.getElementById("extension-candlecam-door-close-button").classList.remove('extension-candlecam-hidden');
                             }
                         }
                         push_button_select.options[push_button_select.options.length] = new Option(thing_title + " - " + property_lists['property1_list'][i], thing_id + "_____" + property_lists['property1_system_list'][i],false,selected_state);
@@ -190,6 +192,7 @@
                             if(thing_id == this.thing_settings['door_release_thing_id']  && property_lists['property1_system_list'][i] == this.thing_settings['door_release_property_id']){
                                 //console.log("setting option as selected");
                                 selected_state = true;
+                                document.getElementById("extension-candlecam-door-release-button").classList.remove('extension-candlecam-hidden');
                             }
                         }
     					door_release_select.options[door_release_select.options.length] = new Option(thing_title + " - " + property_lists['property1_list'][i], thing_id + "_____" + property_lists['property1_system_list'][i],false,selected_state);
@@ -213,7 +216,7 @@
     		}	
 	  
     		const clock_element = document.getElementById('extension-candlecam-clock');
-    		const pre = document.getElementById('extension-candlecam-response-data');
+    		//const pre = document.getElementById('extension-candlecam-response-data');
     		const thing_list = document.getElementById('extension-candlecam-thing-list');
 
             //const camera_source_select = document.getElementById('extension-candlecam-camera-source-select');
@@ -221,7 +224,7 @@
             //const door_release_select = document.getElementById('extension-candlecam-door-release-select');
 
 
-    		pre.innerText = "";
+    		//pre.innerText = "";
 		
     		var this_object = this;
 		
@@ -246,6 +249,11 @@
                 }
     			
                 
+                this.show_list(body['photos']);
+                
+                
+                
+                
                 let stream_buttons_container = document.getElementById('extension-candlecam-stream-buttons-container');
                 if(stream_buttons_container != null){
                     stream_buttons_container.innerHTML = '';
@@ -255,41 +263,50 @@
                         console.log("got gateways: ", body['gateways']);
                         console.log("got gateways typeof: ", typeof body['gateways']);
                         console.log("gateways length: ", Object.keys(body['gateways']).length );
+                        const stream_urls_count = Object.keys(body['gateways']).length;
                         const gateways_keys = Object.keys(body['gateways']);
                         console.log('gateways_keys: ', gateways_keys);
+                        
+                        
                         for (var g = 0; g < Object.keys(body['gateways']).length; g++){
                             console.log(g, gateways_keys[g]);
                             let gateway = body['gateways'][ gateways_keys[g] ];
                             console.log("name: ", gateway);
                             const stream_url = 'http://' + gateways_keys[g] + ':8889/media/candlecam/stream/stream.mjpeg';
+                        
                             stream_urls.push( stream_url );
-                        
-                        
-                            var button_el = document.createElement('button');
-                            //i.setAttribute("type", "text");
-                            button_el.innerText = gateway;
-                            button_el.classList.add('text-button');
-                            button_el.setAttribute("data-stream-url", stream_url );
-                        
-                            button_el.addEventListener('click', (event) => {
-        			            console.log('stream button clicked. Event: ', event.target);
-                                //event.stopImmediatePropagation();
-                                let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
-                                console.log("desired_stream_url: ", desired_stream_url);
                             
-                                document.getElementById('extension-candlecam-picture').src = desired_stream_url;
-                                
-                                document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", desired_stream_url );
-                                
-                            });
-                            stream_buttons_container.appendChild(button_el);
+                            if(stream_urls_count > 1){
+                                console.log("creating buttons");
+                                var button_el = document.createElement('button');
+                                //i.setAttribute("type", "text");
+                                button_el.innerText = gateway;
+                                button_el.classList.add('text-button');
+                                button_el.setAttribute("data-stream-url", stream_url );
+                
+                                button_el.addEventListener('click', (event) => {
+            			            console.log('stream button clicked. Event: ', event.target);
+                                    //event.stopImmediatePropagation();
+                                    let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
+                                    console.log("desired_stream_url: ", desired_stream_url);
+                    
+                                    document.getElementById('extension-candlecam-picture').src = desired_stream_url;
+                        
+                                    document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", desired_stream_url );
+                        
+                                });
+                                stream_buttons_container.appendChild(button_el);
+                            }
+                        
                         }
+                        
                     }
                     console.log("final stream_urls: ", stream_urls);
                 
                     if(stream_urls.length > 0){
                         document.getElementById('extension-candlecam-picture').src = stream_urls[0];
-                        this.grab_mjpeg_frame(stream_urls[0]);
+                        document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", stream_urls[0] );
+                        //this.grab_mjpeg_frame(stream_urls[0]);
                     }
                 }
                 
@@ -420,19 +437,30 @@
     		document.getElementById("extension-candlecam-save-picture-button").addEventListener('click', (event) => {
                 
                 let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
-                console.log("save picture: desired_stream_url: ", desired_stream_url);
+                if(desired_stream_url != null){
+                    console.log("save picture: desired_stream_url: ", desired_stream_url);
                 
-    	        window.API.postJson(
-    	          `/extensions/candlecam/api/ajax`,
-                    {'action':'grab_picture_from_stream',
-                    'stream_url':desired_stream_url}
+        	        window.API.postJson(
+        	          `/extensions/candlecam/api/ajax`,
+                        {'action':'grab_picture_from_stream',
+                        'stream_url':desired_stream_url}
                     
-    	        ).then((body) => {
-    	  			console.log("grab_picture_from_stream returned:");
-    	  			console.log(body);
-    	        }).catch((e) => {
-    	  			console.log("Candlecam: error doing grab_picture_from_stream request: ", e);
-    	        });
+        	        ).then((body) => {
+        	  			console.log("grab_picture_from_stream returned:");
+        	  			console.log(body);
+                        if(body['state']){
+                            this.saved_photos_list = body['photos'];
+                            this.show_list(body['photos']);
+                        }
+                    
+        	        }).catch((e) => {
+        	  			console.log("Candlecam: error doing grab_picture_from_stream request: ", e);
+        	        });
+                }
+                else{
+                    console.log("missing stream_url");
+                }
+                
                 
     		});
             
@@ -444,7 +472,7 @@
                 const property_id = this.thing_settings.door_release_property_id;
                 const message = JSON.parse(`{ "${this.thing_settings.door_release_property_id}": true}`);
                 console.log(message);
-                API.putJson(`/things/${this.thing_settings.door_release_thing_id}/properties/${this.thing_settings.door_release_property_id}`, message);
+                API.putJson(`/things/${this.thing_settings.door_release_thing_id}/properties/${this.thing_settings.door_release_property_id}`, true); //message);
             });
         
             // door close button
@@ -459,7 +487,7 @@
             
             // show saved pictures archive button
             document.getElementById("extension-candlecam-picture-exit").addEventListener('click', () => {
-            
+                document.getElementById("extension-candlecam-content").classList.add('extension-candlecam-show-overview');
             });
             
             
@@ -511,11 +539,11 @@
                         {'action':'save_settings','thing_settings':this.thing_settings}
 
         	        ).then((body) => {
-        	  			//console.log("save settings returned:");
-        	  			//console.log(body);
+        	  			console.log("save settings returned:");
+        	  			console.log(body);
         	        }).catch((e) => {
         	        	//pre.innerText = e.toString();
-        	  			console.log("Candlecam: error saving settings: " + e.toString());
+        	  			console.log("Candlecam: error saving settings: ",e);
         	        });
                     
                     
@@ -523,6 +551,20 @@
                 }
     		});
         
+            
+            // Settings select buttons changes
+            
+            
+            document.getElementById("extension-candlecam-push-button-select").addEventListener('change', (event) => {
+                const new_value = document.getElementById("extension-candlecam-push-button-select").value;
+                console.log('select dropdown changed. New value: ', new_value); 
+                if(new_value != null && typeof new_value != 'undefined'){
+                    console.log("useful value");
+                    document.getElementById('extension-candlecam-main-door-buttons-container').classList.remove('extension-candlecam-hidden');
+                }
+            });
+            
+            
             
 	  
         } // end of show function
@@ -666,14 +708,13 @@
             
             // Show or hide door control buttons
             console.log("door buttons check");
-            console.log(this.thing_settings.door_release_property_id);
             const door_buttons_container = document.getElementById('extension-candlecam-main-door-buttons-container');
-            if(this.thing_settings.door_release_property_id == null){
-                console.log("add hidden class");
+            if(this.thing_settings.door_release_property_id == null || typeof this.thing_settings.door_release_property_id == 'undefined'){
+                console.log("add hidden class to door-buttons-container");
                 this.addClass(door_buttons_container,'extension-candlecam-hidden');
             }
             else{
-                console.log("remove hidden class");
+                console.log("remove hidden class for door-buttons-container");
                 this.removeClass(door_buttons_container,'extension-candlecam-hidden');
             }
             
@@ -689,7 +730,7 @@
 
         show_list(file_list){
     		//console.log("Updating photo list")
-    		const pre = document.getElementById('extension-candlecam-response-data');
+    		//const pre = document.getElementById('extension-candlecam-response-data');
     	  	const photo_list = document.getElementById('extension-candlecam-photos-list');
     		const picture = document.getElementById('extension-candlecam-picture-holder');
     		const overview = document.getElementById('extension-candlecam-overview');
@@ -697,50 +738,51 @@
     		file_list.sort();
 		
     		window.candlecam_filenames = file_list;
-    		//this.filenames = file_list;
+    		//this.saved_photos_list = file_list;
+		    if(photo_list != null){
+        		photo_list.innerHTML = "";
 		
-    		photo_list.innerHTML = "";
-		
-    		for (var key in file_list) {
+        		for (var key in file_list) {
 			
-    			var this_object = this;
+        			var this_object = this;
 			
-    			var node = document.createElement("LI");                 					// Create a <li> node
-    			node.setAttribute("class", "extension-candlecam-list-item" ); 
-    			node.setAttribute("data-filename", file_list[key] );
+        			var node = document.createElement("LI");                 					// Create a <li> node
+        			node.setAttribute("class", "extension-candlecam-list-item" ); 
+        			node.setAttribute("data-filename", file_list[key] );
 			
-    			var img_container_node = document.createElement("div");                 					// Create a <li> node
-    			img_container_node.setAttribute("class", "extension-candlecam-list-thumbnail-container" ); 
+        			var img_container_node = document.createElement("div");                 					// Create a <li> node
+        			img_container_node.setAttribute("class", "extension-candlecam-list-thumbnail-container" ); 
 			
 			
-    			var imgnode = document.createElement("IMG");         // Create a text node
-    			imgnode.setAttribute("class","extension-candlecam-list-thumbnail");
-    			imgnode.setAttribute("data-filename",file_list[key]);
-    			imgnode.src = "/extensions/candlecam/photos/" + file_list[key];
-    			imgnode.onclick = function() { 
-    				this_object.show_file( this.getAttribute("data-filename") ); //file_list[key]
-    				this_object.addClass(overview,"extension-candlecam-hidden");
-    				this_object.removeClass(picture,"extension-candlecam-hidden");
-    			};
-    			//console.log(imgnode);
-    			img_container_node.appendChild(imgnode); 
-    			node.appendChild(img_container_node); 
+        			var imgnode = document.createElement("IMG");         // Create a text node
+        			imgnode.setAttribute("class","extension-candlecam-list-thumbnail");
+        			imgnode.setAttribute("data-filename",file_list[key]);
+        			imgnode.src = "/extensions/candlecam/photos/" + file_list[key];
+        			imgnode.onclick = function() { 
+        				this_object.show_file( this.getAttribute("data-filename") ); //file_list[key]
+        				this_object.addClass(overview,"extension-candlecam-hidden");
+        				this_object.removeClass(picture,"extension-candlecam-hidden");
+        			};
+        			//console.log(imgnode);
+        			img_container_node.appendChild(imgnode); 
+        			node.appendChild(img_container_node); 
 			
-    			var textnode = document.createElement("span"); 
-    			textnode.setAttribute("class","extension-candlecam-deletable_item");
-    			textnode.setAttribute("data-filename", file_list[key]);
-    			//console.log(textnode);
-    			textnode.innerHTML = file_list[key];         // Create a text node
-    			textnode.onclick = function() { 
-    				//this_object.delete_file( file_list[key] );
-    				//console.log(this.getAttribute("data-filename"));
-    				this_object.delete_file( this.getAttribute("data-filename") );
-    			};
-    			node.appendChild(textnode); 
+        			var textnode = document.createElement("span"); 
+        			textnode.setAttribute("class","extension-candlecam-deletable_item");
+        			textnode.setAttribute("data-filename", file_list[key]);
+        			//console.log(textnode);
+        			textnode.innerHTML = file_list[key];         // Create a text node
+        			textnode.onclick = function() { 
+        				//this_object.delete_file( file_list[key] );
+        				//console.log(this.getAttribute("data-filename"));
+        				this_object.delete_file( this.getAttribute("data-filename") );
+        			};
+        			node.appendChild(textnode); 
 			
-    			photo_list.appendChild(node);
-    		}
-    		pre.innerText = "";
+        			photo_list.appendChild(node);
+        		}
+		    }
+    		
     	}
 
 		
@@ -748,7 +790,7 @@
     	delete_file(filename){
         //console.log("Deleting file:" + filename);
 			
-    	const pre = document.getElementById('extension-candlecam-response-data');
+    	//const pre = document.getElementById('extension-candlecam-response-data');
     	const photo_list = document.getElementById('extension-candlecam-photo-list');
 		
         window.API.postJson(
@@ -756,19 +798,19 @@
             {'action':'delete', 'filename':filename}
 				
           ).then((body) => { 
-    				//console.log(body);
+    		//console.log(body);
             this.show_list(body['data']);
 
           }).catch((e) => {
-    				console.log("Photo frame: error in delete response");
-            pre.innerText = e.toString();
+    	      console.log("Photo frame: error in delete response");
+            //pre.innerText = e.toString();
           });
     
         }
 		
 	
     	show_file(filename){
-    		const pre = document.getElementById('extension-candlecam-response-data');
+    		//const pre = document.getElementById('extension-candlecam-response-data');
     		const picture = document.getElementById('extension-candlecam-picture-holder');
     		const overview = document.getElementById('extension-candlecam-overview');
     		//console.log("showing photo: " + filename);
@@ -882,6 +924,9 @@
     	    	ele.className=ele.className.replace(reg,' ');
     	  	}
     	}
+        
+        
+        
     
     }
 
