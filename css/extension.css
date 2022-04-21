@@ -13,6 +13,14 @@
 }
 
 
+#extension-candlecam-loading{
+    width:100%;
+    height:calc(100% - 10rem);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
 
 #extension-candlecam-overview{
     padding-top:8rem;
@@ -402,6 +410,67 @@ LIST
 #menu-button, #back-button{
     z-index:1;
 }
+
+
+
+.extension-candlecam-spinner {
+  display: inline-block;
+  position: relative;
+  width: 80px;
+  height: 80px;
+  margin:0 auto;
+}
+.extension-candlecam-spinner div {
+  position: absolute;
+  top: 33px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.5);
+  animation-timing-function: cubic-bezier(0, 1, 1, 0);
+}
+.extension-candlecam-spinner div:nth-child(1) {
+  left: 8px;
+  animation: extension-candlecam-spinner1 0.6s infinite;
+}
+.extension-candlecam-spinner div:nth-child(2) {
+  left: 8px;
+  animation: extension-candlecam-spinner2 0.6s infinite;
+}
+.extension-candlecam-spinner div:nth-child(3) {
+  left: 32px;
+  animation: extension-candlecam-spinner2 0.6s infinite;
+}
+.extension-candlecam-spinner div:nth-child(4) {
+  left: 56px;
+  animation: extension-candlecam-spinner3 0.6s infinite;
+}
+@keyframes extension-candlecam-spinner1 {
+  0% {
+    transform: scale(0);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes extension-candlecam-spinner3 {
+  0% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(0);
+  }
+}
+@keyframes extension-candlecam-spinner2 {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(24px, 0);
+  }
+}
+
+
 
 
 @media screen and (min-width: 801px) {

@@ -214,7 +214,7 @@
     		else{
     			this.view.innerHTML = this.content;
     		}	
-	  
+	        
     		const clock_element = document.getElementById('extension-candlecam-clock');
     		//const pre = document.getElementById('extension-candlecam-response-data');
     		const thing_list = document.getElementById('extension-candlecam-thing-list');
@@ -229,6 +229,8 @@
     		var this_object = this;
 		
             //console.log(API);
+        
+            console.log("Candlecam: requesting /INIT");
         
             window.API.postJson(
               `/extensions/candlecam/api/ajax`,
@@ -248,6 +250,8 @@
                     this.removeClass(document.getElementById('extension-candlecam-settings-button'),"extension-candlecam-hidden");
                 }
     			
+                document.getElementById('extension-candlecam-loading').style.display = 'none';
+                
                 
                 this.show_list(body['photos']);
                 
@@ -312,11 +316,11 @@
                     }
                 }
                 
-                this.get_things();
+                //this.get_things();
             
             }).catch((e) => {
             	//pre.innerText = e.toString();
-      			console.log("Candle cam: init error: ", e);
+      			console.log("ERROR Candle cam: init request failed: ", e);
             });
         
         
@@ -417,11 +421,11 @@
                         initApp();
                     }
                     else{
-                        console.log("wait...");
+                        console.log("wait for Shaka...");
                         setTimeout(waitForElement, 250);
                     }
                 }
-                waitForElement();
+                //waitForElement(); # disabled Shaka player
 			
     		}
     		catch (e) {

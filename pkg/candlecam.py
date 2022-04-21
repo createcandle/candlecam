@@ -119,11 +119,12 @@ class CandlecamAPIHandler(APIHandler):
         print("INSIDE API HANDLER INIT")
         
         self.addon_name = 'candlecam'
-        self.server = 'http://127.0.0.1:8080'
-        self.DEV = True
-        self.DEBUG = True
+        #self.server = 'http://127.0.0.1:8080'
+        
+        self.DEBUG = True # TODO: disable debugging by default
         self.ready = False
-
+        self.running = True
+        
         try:
             manifest_fname = os.path.join(
                 os.path.dirname(__file__),
@@ -139,34 +140,30 @@ class CandlecamAPIHandler(APIHandler):
             APIHandler.__init__(self, manifest['id'])
             self.manager_proxy.add_api_handler(self)            
             
-            self.running = True
             
-            self.encode_audio = False
+            global viewers
+            viewers = 0
+            global streaming
+            streaming = True
             
+            
+            # RESPEAKER
             self.has_respeaker_hat = False
-            self.picam = None
-            self.ffmpeg_process = None
-            
             self.lights = None
+            self.plughw_number = '0,0'
+            self.has_respeaker_hat = False
+                        
             
-            
+            # THINGS
             self.things = [] # Holds all the things, updated via the API. Used to display a nicer thing name instead of the technical internal ID.
-            self.data_types_lookup_table = {}
-            
-            self.interval = 30
-            self.contain = 1
-        
-            self.clock = False
-        
-            self.gateways_ip_list = [] #list of IP addresses and hostnames of local candle servers
-            self.gateways_ip_dict = {} #list of IP addresses and hostnames of local candle servers
+            #self.data_types_lookup_table = {}
             
             
-            
-            #self.port = 8888
-            self.webthing_port = 8889
-            self.name = 'candlecam' # thing name
-            self.https = False
+            # NETWORK
+            self.last_network_scan_time = 0
+            self.busy_doing_network_scan = False
+            self.gateways_ip_list = [] # list of IP addresses of local candle servers
+            self.gateways_ip_dict = {} # dict IP addresses and hostnames of local candle servers
             
             self.own_ip = '127.0.0.1'
             try:
@@ -175,35 +172,57 @@ class CandlecamAPIHandler(APIHandler):
                 print(str(ex))
             
             
-            self.framerate = 10
-            
-            self.use_ramdrive = True
-            self.ramdrive_created = False # it's only created is enough free memory is available (50Mb)
-
+            # STREAMING
+            self.ffmpeg_process = None
+            self.encode_audio = False
             self.only_stream_on_button_press = False
+            self.own_mjpeg_url = 'http://' + self.own_ip + ':8889/media/candlecam/stream/stream.mjpeg'
             
+            
+            # CAMERA
+            self.picam = None
+            self.framerate = 10
+            self.last_write_time = 0
+            
+            
+            # WEBTHING SERVER
+            self.thing_server = None
+            self.webthing_port = 8889
+            self.name = 'candlecam' # thing name
+            self.https = False
             self.button_state = Value(False)
             self.streaming = Value(True)
-            
-            self.volume_level = 90
-            
             self.pressed = False
             self.pressed_sent = False
             self.pressed_countdown_time = 60 #1200 # 1200 = 2 minutes
             self.pressed_countdown = self.pressed_countdown_time
             
+            
+            #GPIO
             self.button_pin = 17
             self.servo_pin = 13
             self.servo_open_position = 0
             self.servo_closed_position = 70
             
-            self.terminated = False
+            
+            # RAMDRIVE (not used currently)
+            self.use_ramdrive = True
+            self.ramdrive_created = False # it's only created is enough free memory is available (50Mb)
+
+            
+            
+            
+            #self.volume_level = 90
+            
+           
+            
+            
+            #self.terminated = False
             
             self.take_a_photo = False
             
-            # CHECK FOR RESPEAKER HAT
-            self.plughw_number = '0,0'
-            self.has_respeaker_hat = False
+            
+            # DETECT RESPEAKER HAT
             print("\naplay -l output:")
             aplay_output = run_command('aplay -l')
             print(str(aplay_output))
@@ -224,7 +243,7 @@ class CandlecamAPIHandler(APIHandler):
             
             #self.network_scan()
             
-            self.own_mjpeg_url = 'http://' + self.own_ip + ':8889/media/candlecam/stream/stream.mjpeg'
+            
             
         except Exception as ex:
             print("Failed in first part of init: " + str(ex))
@@ -232,12 +251,12 @@ class CandlecamAPIHandler(APIHandler):
             
         #self.kill_ffmpeg()
 
-        
-        self.adapter = CandlecamAdapter(self)
+        # Adapter is used to send pairing prompt notifications. Currently only used in debug mode.
         if self.DEBUG:
-            print("Candlecam adapter created")
-            
-            print("self.adapter.user_profile: " + str(self.adapter.user_profile))
+            self.adapter = CandlecamAdapter(self)
+            if self.DEBUG:
+                print("Candlecam adapter created")
+                print("self.adapter.user_profile: " + str(self.adapter.user_profile))
         
 
             
@@ -285,11 +304,12 @@ class CandlecamAPIHandler(APIHandler):
             check_camera_result = check_camera_result.decode('utf-8')
             if self.DEBUG:
                 print("check_camera_result = " + str(check_camera_result))
+            
             if 'supported=0' in check_camera_result:
                 if self.DEBUG:
-                    print("Pi camera does not seem to be supported. Enabling it now.")
+                    print("\n! Pi camera does not seem to be supported\n")
                 #os.system('sudo raspi-config nonint do_i2c 1')
-
+                """
                 with open("/boot/config.txt", "r") as file:
                     os.system('cp /boot/config.txt /boot/config.bak')
                     #for line in file:
@@ -316,14 +336,14 @@ class CandlecamAPIHandler(APIHandler):
                             
                     self.adapter.send_pairing_prompt("Please reboot the device")
                 
-                
+                """
             elif 'detected=0' in check_camera_result:
                 if self.DEBUG:
-                    print("Pi camera is supported, but was not detected")
-                self.adapter.send_pairing_prompt("Make sure the camera is plugged in")
+                    print("\nPi camera is supported, but was not detected\n")
+                    self.adapter.send_pairing_prompt("No camera detected")
             else:
                 if self.DEBUG:
-                    print("\nPi camera seems good to go")
+                    print("\nPi camera seems good to go\n")
                 self.camera_available = True
                 
         except Exception as ex:
@@ -343,9 +363,26 @@ class CandlecamAPIHandler(APIHandler):
     
         if self.DEBUG:
             print("Current working directory: " + str(os.getcwd()))
+            print("self.user_profile: " + str(self.user_profile))
     
         try:
         
+            self.addon_path = os.path.join(self.user_profile['addonsDir'], self.addon_name)
+            #self.persistence_file_path = os.path.join(os.path.expanduser('~'), '.mozilla-iot', 'data', self.addon_name,'persistence.json')
+            self.persistence_dir_path = os.path.join(self.user_profile['dataDir'], self.addon_name)
+            self.persistence_file_path = os.path.join(self.persistence_dir_path, 'persistence.json')
+
+
+            # Make sure the persistence data directory exists
+            try:
+                if not os.path.isdir(self.persistence_dir_path):
+                    os.mkdir( self.persistence_dir_path )
+                    print("Persistence directory did not exist, created it now")
+            except:
+                print("Error: could not make sure persistence dir exists. intended persistence dir path: " + str(self.persistence_dir_path))
+            
+            
+            
             # Get persistent data
             self.persistence_file_path = self.adapter.persistence_file_path
             if self.DEBUG:
@@ -567,7 +604,7 @@ class CandlecamAPIHandler(APIHandler):
         
         
         # Create ramdisk for dash files (to prevent wear on SD card)
-        self.available = 0
+        """
         self.use_ramdrive = False # TODO DEBUG TEMPORARY, REMOVE ME
         if self.use_ramdrive:
             
@@ -583,9 +620,10 @@ class CandlecamAPIHandler(APIHandler):
                 os.system('sudo mount -t tmpfs -o size=50m candlecam_ramdrive ' + self.media_stream_dir_path)
                 self.ramdrive_created = True
 
-
+        """
+        
         # Start stream if necessary
-        if self.persistent_data['streaming']:
+        if self.camera_available and self.persistent_data['streaming']:
             if self.DEBUG:
                 print("According to persistent data, streaming was on. Setting streaming_change to True (starting streaming).")
             self.streaming_change(True)
@@ -811,32 +849,71 @@ class CandlecamAPIHandler(APIHandler):
     def run_picamera(self):   
         if self.DEBUG:
             print("in run_picamera") 
-        self.picam = picamera.PiCamera(resolution='720p', framerate=10)
-        self.picam.exposure_mode = 'auto'
-        self.picam.awb_mode = 'auto'
+        #self.picam = picamera.PiCamera(resolution='720p', framerate=10)
+        #self.picam.exposure_mode = 'auto'
+        #self.picam.awb_mode = 'auto'
         
         try:
-            self.picam.start_preview()
+            #self.picam.start_preview()
             # Give the camera some warm-up time
-            time.sleep(2)
-            self.output = StreamOutput(self,self.mjpeg_file_path)
-            if self.DEBUG:
-                print("run_picamera: start_recording")
-            self.picam.start_recording(self.output, format='mjpeg')
-        except:
-           print('ERROR. run_picamera: Error setting up recording!')
-        
-        try:
-            while self.persistent_data['streaming']:
-                self.picam.wait_recording(2)
+            #time.sleep(2)
+            #self.output = StreamOutput(self,self.mjpeg_file_path)
+            #if self.DEBUG:
+            #    print("run_picamera: start stream capture")
+            #self.picam.start_recording(self.output, format='mjpeg')
+            
+            with picamera.PiCamera(resolution='720p', framerate=10) as self.picam:
+                self.picam.exposure_mode = 'auto'
+                self.picam.awb_mode = 'auto'
+                
+                # let camera warm up
+                time.sleep(2)
+
+                stream = io.BytesIO()
+                for _ in self.picam.capture_continuous(stream, 'jpeg', use_video_port=True):
+                    global frame
+                    
+                    # return current frame
+                    stream.seek(0)
+                    frame = stream.read()
+                    
+                    # reset stream for next frame
+                    stream.seek(0)
+                    stream.truncate()
+                    
+                    if self.take_a_photo: # TODO: or if continous periodic recording should be active, perhaps while in security mode?
+                
+                        self.take_a_photo = False
+    
+                        filename = str(int(time.time())) + '.jpg'
+                        file_path = os.path.join( self.api_handler.data_photos_dir_path,filename)
+                        # This stores a jpg as mjpeg on the SD card. Technically it could then be accessed via the Webthings standard.. if the remote location has a valid JWT. 
+                        # TODO: could be a security feature in the future
+                        if time.time() - 1 > self.last_write_time:
+                            #if self.DEBUG:
+                            print("saving a photo from the picamera stream")
+                            self.last_write_time = time.time()
+                            #with open(self.mjpeg_file_path, "wb") as binary_file: # if continous storage for mjpeg serving via webthings standard is required
+                            with open(file_path, "wb") as binary_file:
+                                #print("saving jpg as mjpeg")
+                                binary_file.write(frame.getvalue())
+                    
+                    if self.persistent_data['streaming'] == False:
+                        break
+            
         except Exception as ex:
-            print("ERROR. run_picamera: Error while getting image data from camera module: " + str(ex))
-        self.picam.stop_recording()
-        self.output.close()
+           print('ERROR. run_picamera: Error setting up recording: ' + str(ex))
+        
+        #try:
+        #    while self.persistent_data['streaming']:
+        #        self.picam.wait_recording(2)
+        #except Exception as ex:
+        #    print("ERROR. run_picamera: Error while getting image data from camera module: " + str(ex))
+        #self.picam.stop_recording()
+        #self.output.close()
         if self.DEBUG:
             print("at end of picamera thread. Does it close now?")
         #self.join()
-        
         
         
     # Not useful on Raspian Bullseye yet, as libcamera has no python support yet...
@@ -1158,6 +1235,8 @@ class CandlecamAPIHandler(APIHandler):
         
         #more_routes.append( (r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}) )
         more_routes.append( (r"/media/candlecam/stream/(.*)", StreamyHandler ) )
+        more_routes.append( (r"/snapshot", SnapshotHandler ) )
+        more_routes.append( (r"/ping", PingHandler ) )
         #more_routes.append( (r'/mjpg', StreamyHandler) ) 
         
         #"""
@@ -1175,7 +1254,7 @@ class CandlecamAPIHandler(APIHandler):
         except Exception as ex:
             if self.DEBUG:
                 print("ERROR starting thing server: " + str(ex))
-            self.adapter.send_pairing_prompt("Error starting server. Tip: reboot.")
+                self.adapter.send_pairing_prompt("Error starting server. Tip: reboot.")
         #while(True):
         #    sleep(1)
         #"""
@@ -1297,6 +1376,14 @@ class CandlecamAPIHandler(APIHandler):
         if self.DEBUG:
             print("in streaming_change. new streaming state: " + str(state))
             print("self.encode_audio: " + str(self.encode_audio))
+        
+        if self.camera_available == False:
+            print("no camera available")
+            return
+        
+        global streaming
+        streaming = state
+        
         # START STREAMING
         if state:
             if self.DEBUG:
@@ -1501,46 +1588,74 @@ class CandlecamAPIHandler(APIHandler):
 
 
     def network_scan(self):
-        gateways_ip_dict = {}
-        try:
-            # Satellite targets
-            gateways_ip_dict = arpa_detect_gateways()
+        if self.DEBUG:
+            print("\n\nIn NETWORK SCAN")
+            
+        if self.busy_doing_network_scan:
+            return self.gateways_ip_dict
+            
+        if self.last_network_scan_time + 120 < time.time():
+            self.last_network_scan_time = int(time.time())
+            self.busy_doing_network_scan = True
             if self.DEBUG:
-                print("\n\nNETWORK SCAN\ninitial self.gateways_ip_dict: " + str(gateways_ip_dict))
-        
-            gateways_ip_dict[self.own_ip] = socket.gethostname()
-        
-            satellite_targets = {}
-            for ip_address in gateways_ip_dict: # server = ip address
+                print("doing a fresh network scan")
+            gateways_ip_dict = {}
+            try:
+                # Satellite targets
+                gateways_ip_dict = arpa_detect_gateways()
                 if self.DEBUG:
-                    print("checking server ip_address: " + str(ip_address))
+                    print("- arpascan result: " + str(gateways_ip_dict))
+        
+                if self.camera_available:
+                    gateways_ip_dict[self.own_ip] = socket.gethostname()
+        
+                satellite_targets = {}
+                for ip_address in gateways_ip_dict: # server = ip address
                 
-                try:
-                    #stream_url = 'http://' + ip_address + ':8889/media/candlecam/stream/stream.mjpeg';
-                    #r = requests.get(stream_url)
-                    #if self.DEBUG:
-                    #    print("status code: " + str(r.status_code))
-                    #if r.status_code == 200:
-                    nbtscan_output = str(subprocess.check_output(['sudo','nbtscan','-q',str(ip_address)]))
-                    if len(nbtscan_output) > 10:
+                    if ip_address == self.own_ip:
+                        if self.DEBUG:
+                            print("skipping checking own IP")
+                            continue
+                        
+                    if self.DEBUG:
+                        print("checking server ip_address: " + str(ip_address))
+                
+                    try:
+                        #stream_url = 'http://' + ip_address + ':8889/media/candlecam/stream/stream.mjpeg';
+                        #r = requests.get(stream_url)
+                        #if self.DEBUG:
+                        #    print("status code: " + str(r.status_code))
+                        #if r.status_code == 200:
+                        nbtscan_output = subprocess.check_output(['sudo','nbtscan','-q',str(ip_address)])
+                        nbtscan_output = nbtscan_output.decode('utf-8')
                         if self.DEBUG:
                             print("nbtscan_output: " + str(nbtscan_output))
-                        shorter = nbtscan_output.split(" ",1)[1]
-                        shorter = shorter.lstrip()
-                        parts = shorter.split()
-                        gateways_ip_dict[ip_address] = parts[0]
-                except Exception as ex:
-                    print("Error while checking server IP address: " + str(ex))
+                    
+                        if len(nbtscan_output) > 10:
+                            if self.DEBUG:
+                                print("nbtscan_output: " + str(nbtscan_output))
+                            shorter = nbtscan_output.split(" ",1)[1]
+                            shorter = shorter.lstrip()
+                            parts = shorter.split()
+                            gateways_ip_dict[ip_address] = parts[0]
+                    except Exception as ex:
+                        print("Error while checking server IP address: " + str(ex))
             
-            if self.DEBUG:
-                print("\nnew gateways_ip_dict: " + str(gateways_ip_dict))
+                if self.DEBUG:
+                    print("\nnew gateways_ip_dict: " + str(gateways_ip_dict))
         
-            self.gateways_ip_dict = gateways_ip_dict
-        except Exception as ex:
-            print("Error in network_scan: " + str(ex))
+                self.gateways_ip_dict = gateways_ip_dict
+            except Exception as ex:
+                print("Error in network_scan: " + str(ex))
             
-        return gateways_ip_dict
-
+            self.busy_doing_network_scan = False
+            
+            return gateways_ip_dict
+        
+        else:
+            if self.DEBUG:
+                print("Returning previous network scan results")
+            return self.gateways_ip_dict
 
 
     def handle_request(self, request):
@@ -1620,13 +1735,19 @@ class CandlecamAPIHandler(APIHandler):
                                         stream_url = str(request.body['stream_url'])    
                                     
                                         if stream_url.endswith('mjpg') or stream_url.endswith('mjpeg'):
-                                            state = self.grab_mjpeg_frame(stream_url)
+                                            
+                                            if '/media/candlecam/stream/stream.mjpeg' in stream_url:
+                                                stream_url = stream_url.replace('/media/candlecam/stream/stream.mjpeg','/snapshot')
+                                                state = self.download_snapshot(stream_url)
+                                            else:
+                                                state = self.grab_mjpeg_frame(stream_url)
                                             
                                         time.sleep(1)
                                         try:
                                             photos_list = self.scan_photo_dir()
                                             if isinstance(photos_list, str):
                                                 state = False
+                                                photos_list = []
                                         except Exception as ex:
                                             print("Error scanning for existing photos: " + str(ex))
                                             photos_list = []
@@ -1634,6 +1755,37 @@ class CandlecamAPIHandler(APIHandler):
                                 except Exception as ex:
                                     if self.DEBUG:
                                         print("error grabbing image from stream: " + str(ex))
+                            
+                                return APIResponse(
+                                  status=200,
+                                  content_type='application/json',
+                                  content=json.dumps({'state' : state, 'message': '','photos':photos_list}),
+                                )
+                            
+                            
+                            elif action == 'download_snapshot':
+                                state = False
+                                photos_list = []
+                                try:
+                                    if 'snapshot_url' in request.body:
+                                        snapshot_url = str(request.body['snapshot_url'])    
+                                    
+                                        if snapshot_url.endswith('.jpg') or snapshot_url.endswith('.jpeg'):
+                                            state = self.download_snapshot(snapshot_url)
+                                            
+                                        time.sleep(1)
+                                        try:
+                                            photos_list = self.scan_photo_dir()
+                                            if isinstance(photos_list, str):
+                                                state = False
+                                                photos_list = []
+                                        except Exception as ex:
+                                            print("Error scanning for existing photos: " + str(ex))
+                                            photos_list = []
+                                            
+                                except Exception as ex:
+                                    if self.DEBUG:
+                                        print("error downloading snapshot: " + str(ex))
                             
                                 return APIResponse(
                                   status=200,
@@ -1795,7 +1947,7 @@ class CandlecamAPIHandler(APIHandler):
         except Exception as ex:
             print("Unload: stopping picamera error: " + str(ex))
             
-        if self.thing_server:
+        if self.thing_server != None:
             self.thing_server.stop()
             
         #os.system('pkill libcamera-jpeg')
@@ -1958,7 +2110,21 @@ class CandlecamAPIHandler(APIHandler):
 
 
 
-
+    def download_snapshot(self,snapshot_url):
+        if self.DEBUG:
+            print("in download_snapshot with snapshot_url: " + str(snapshot_url))
+        with requests.get(snapshot_url, stream=True) as r:
+            r.raise_for_status()
+            
+            filename = str(int(time.time())) + '.jpg'
+            file_path = os.path.join( self.data_photos_dir_path,filename)
+            
+            with open(file_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192): 
+                    # If you have chunk encoded response uncomment if
+                    # and set chunk_size parameter to None.
+                    #if chunk: 
+                    f.write(chunk)
 
 
 
@@ -2053,6 +2219,7 @@ class CandlecamAdapter(Adapter):
 #  PICAMERA CLASSES
 #
 
+"""
 class StreamOutput(object):
     def __init__(self,api_handler,file_path):
         self.snapshot = None
@@ -2096,6 +2263,7 @@ class StreamOutput(object):
             
     def close(self):
         self.snapshot.close()
+"""
 
 
 class StreamyHandler(tornado.web.RequestHandler):
@@ -2105,7 +2273,14 @@ class StreamyHandler(tornado.web.RequestHandler):
     @tornado.gen.coroutine
     def get(self,something):
         print("in StreamyHandler get. something: " + str(something))
+        #loop = tornado.ioloop.IOLoop.current()
         global frame
+        global streaming
+        global viewers
+        
+        viewers += 1
+        print("viewer count: " + str(viewers))
+        self.viewer_count = viewers
         #global new_frame
         #global candlecammy
         #if self.streaming:
@@ -2139,18 +2314,37 @@ class StreamyHandler(tornado.web.RequestHandler):
             try:
                 self.write(my_boundary + '\r\n')
                 self.write("Content-type: image/jpeg\r\n")
-                self.write("Content-length: %s\r\n\r\n" % frame.getbuffer().nbytes)
-                self.write(frame.getvalue())
-            
+                #self.write("Content-length: %s\r\n\r\n" % frame.getbuffer().nbytes)
+                #self.write(frame.getvalue())
+                if streaming:
+                    self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(frame))
+                    self.write(frame)
+                    mjpg_interval = .1
+                else:
+                    self.write("Content-length: %s\r\n\r\n" % not_streaming_image_size)
+                    self.write(not_streaming_image)
+                    mjpg_interval = 1
                 self.write('\r\n')
                 self.served_image_timestamp = time.time()
                 #print(str(self.served_image_timestamp))
                 self.flush()
-                yield tornado.gen.sleep(.1)
+                #yield gen.Task(self.flush)
+                
+                if self.viewer_count < viewers - 1:
+                    print("Too many viewers, stopping get loop: " + str(self.viewer_count))
+                    break
+                    
+                if streaming == False:
+                    print("streaming was set to disabled")
+                    break
+                    
+                yield tornado.gen.sleep(mjpg_interval)
+                
+                
             except Exception as ex:
                 print("Error posting frame: " + str(ex))
                 
-                
+                """
                 self.write(my_boundary + '\r\n')
                 self.write("Content-type: image/jpeg\r\n")
                 self.write("Content-length: %s\r\n\r\n" % not_streaming_image_size)
@@ -2161,16 +2355,63 @@ class StreamyHandler(tornado.web.RequestHandler):
                 #print(str(self.served_image_timestamp))
                 self.flush()
                 yield tornado.gen.sleep(1)
+                """
                 
+                break
                 
-                #break
-                
-        print("GET DONE")
+        print("streamyhandler: GET while loop ended")
         
     def on_finish(self):
-        print("in on_finish")
+        print("streamyhandler: in on_finish")
         pass
     
+    
+    
+class PingHandler(tornado.web.RequestHandler):
+
+    #@tornado.web.asynchronous
+    @tornado.gen.coroutine
+    def get(self):
+        print("in PingHandler get")
+        #self.set_header('Cache-Control', 'no-cache, private')
+        self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
+        self.set_header('Pragma', 'no-cache')
+        self.set_header('Connection', 'close')
+        #self.set_header('Content-Type', 'multipart/x-mixed-replace;boundary=--jpgboundary')
+        self.flush()
+        #counter = 0
+        #yield tornado.gen.sleep(1)
+        
+    def on_finish(self):
+        print("pingy in on_finish")
+        pass
+
+
+    
+class SnapshotHandler(tornado.web.RequestHandler):
+
+    #@tornado.web.asynchronous
+    @tornado.gen.coroutine
+    def get(self):
+        print("in SnapshotHandler get")
+    
+        global frame
+        #self.set_header('Cache-Control', 'no-cache, private')
+        self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
+        self.set_header('Pragma', 'no-cache')
+        #self.set_header('Connection', 'close')
+        self.set_header("Content-type",  "image/jpg")
+        self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(frame))
+        self.write(frame)
+        #self.set_header('Content-Type', 'multipart/x-mixed-replace;boundary=--jpgboundary')
+        self.flush()
+        #counter = 0
+        #yield tornado.gen.sleep(1)
+        
+    def on_finish(self):
+        print("snapshot in on_finish")
+        pass
+
 
 
 
@@ -2269,14 +2510,17 @@ def arpa_detect_gateways(quick=True):
                         
                     #print("found valid IP address: " + str(ip_address))
                     try:
-                        test_url_a = 'http://' + ip_address + ':8889/media/candlecam/stream/stream.mjpeg'; #'http://' + str(ip_address) + "/"
+                        test_url_a = 'http://' + ip_address + ':8889/ping'; #'http://' + str(ip_address) + "/"
                         #test_url_b = 'https://' + str(ip_address) + "/"
                         #html = ""
                         try:
-                            response = s.get(test_url_a, allow_redirects=True, timeout=1)
+                            response = s.get(test_url_a, allow_redirects=True, timeout=4)
+                            print("response code: " + str(response.status_code))
                             if response.status_code == 200:
+                                print("OK")
                                 if ip_address not in gateway_list:
                                     gateway_list.append(ip_address)
+                                    gateway_dict[ ip_address ] = ip_address
                             #print("http response: " + str(response.content.decode('utf-8')))
                             #html += response.content.decode('utf-8').lower()
                         except Exception as ex:
