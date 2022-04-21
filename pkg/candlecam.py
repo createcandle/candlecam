@@ -654,12 +654,16 @@ class CandlecamAPIHandler(APIHandler):
         #time.sleep(10)
         #self.thingy()
         try:
-            if self.DEBUG:
-                print("init: starting the thingy thread")
-            self.t = threading.Thread(target=self.thingy) #, args=(self.voice_messages_queue,))
-            self.t.daemon = True
-            self.t.start()
+            if self.has_respeaker_hat or self.camera_available:
             
+                if self.DEBUG:
+                    print("init: starting the thingy thread")
+                self.t = threading.Thread(target=self.thingy) #, args=(self.voice_messages_queue,))
+                self.t.daemon = True
+                self.t.start()
+            else:
+                if self.DEBUG:
+                    print("init: NOT starting the thingy thread (no camera and no respeaker hat)")
         except:
             print("Error starting the thingy thread")
         
@@ -1047,7 +1051,6 @@ class CandlecamAPIHandler(APIHandler):
         if self.has_respeaker_hat:
             
             print("adding thing properties for respeaker hat")
-            
             
             thing.add_property(
                 webthing.Property(thing,
