@@ -31,6 +31,9 @@ rm -rf *.tgz *.shasum package SHA256SUMS lib
 echo "creating package"
 mkdir -p lib package
 
+# This helps skip a compilation check in picamera
+export READTHEDOCS=True 
+
 pip3 install -r requirements.txt -t lib --no-binary :all: --prefix "" --default-timeout=100
 
 # Remove local cffi so that the globally installed version doesn't clash
