@@ -2113,20 +2113,25 @@ class CandlecamAPIHandler(APIHandler):
     def download_snapshot(self,snapshot_url):
         if self.DEBUG:
             print("in download_snapshot with snapshot_url: " + str(snapshot_url))
-        with requests.get(snapshot_url, stream=True) as r:
-            r.raise_for_status()
+        try:
+            with requests.get(snapshot_url, stream=True) as r:
+                r.raise_for_status()
             
-            filename = str(int(time.time())) + '.jpg'
-            file_path = os.path.join( self.data_photos_dir_path,filename)
+                filename = str(int(time.time())) + '.jpg'
+                file_path = os.path.join( self.data_photos_dir_path,filename)
             
-            with open(file_path, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192): 
-                    # If you have chunk encoded response uncomment if
-                    # and set chunk_size parameter to None.
-                    #if chunk: 
-                    f.write(chunk)
+                with open(file_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192): 
+                        # If you have chunk encoded response uncomment if
+                        # and set chunk_size parameter to None.
+                        #if chunk: 
+                        f.write(chunk)
+                
+                return True
+        except Exception as ex:
+            print("Error in download_snashot: " + str(ex))
 
-
+        return False
 
 
 
