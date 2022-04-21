@@ -4,10 +4,18 @@
 }
 
 
+#extension-candlecam-content{
+	width:100vw;
+	height:100vh;
+	position:fixed;
+	top:0;
+	left:0;
+}
+
 
 
 #extension-candlecam-overview{
-	margin-top:6rem;
+    padding-top:8rem;
     display:none;
 }
 
@@ -21,7 +29,6 @@
 
 
 #extension-candlecam-picture-holder{
-	background-color:black;
 	width:100vw;
 	height:100vh;
 	position:fixed;
@@ -32,34 +39,54 @@
 	background-position: center; 
 	display:flex;
 	flex-wrap:wrap;
-	align-content: space-between;
+	align-content: center;
 	justify-content: center;
 	align-items: flex-end;
     /*z-index: -1;*/
 }
 
+
+#extension-candlecam-picture{
+    width:100%;
+}
+
+#extension-candlecam-snapshot{
+    width:100%;
+}
+
+.extension-candlecam-busy-saving-snapshot{
+    opacity:.1;
+}
+
+
 #extension-candlecam-picture-exit{
-	border:1px solid white;
+	/*
+    border:1px solid white;
 	opacity:.4;
 	cursor:pointer;
 	padding:2rem;
 	border-bottom: none;
 	border-top-left-radius: .5rem;
-	border-top-right-radius: .5rem;
+	border-top-right-radius: .5rem;*/
 	display: inline-block;
 }
 
-
+/*
 #extension-candlecam-picture-exit:hover{
 	opacity:1;
 	background-color:#5288af;
 }
+*/
 
 
 #extension-candlecam-photos-list{
 	background-color:rgba(255,255,255,.1);
 	display:flex;
 	flex-wrap:wrap;
+    justify-content:center;
+}
+#extension-candlecam-photos-list:not(:empty){
+    padding-top:2rem;
 }
 
 
@@ -80,28 +107,24 @@
 	max-height: calc(100% - 10px);
 }
 
+[src=''] {
+    visibility: hidden;
+}
+
 .extension-candlecam-list-thumbnail:hover{
 	filter: brightness(120%);
 }
 
-#extension-candlecam-dropzone {
-    height: 6rem;
-    border: 2px dashed #ccc;
-    color: #ccc;
-    text-align: center;
-		display:flex;
-		align-content: center;
-		justify-content: center;
-		align-items: center;
-		margin-bottom:.2rem;
-		display:none;
+.extension-candlecam-snapshot-time-part,
+.extension-candlecam-snapshot-date-part{
+    display:block;
+    text-align:center;
 }
 
-#extension-candlecam-dropzone.extension-candlecam-dragover {
-    border-color: #000;
-    color: #000;
-		background-color:white;
+.extension-candlecam-snapshot-time-part{
+    font-size:1.5rem;
 }
+
 
 
 #extension-candlecam-icon{
@@ -149,9 +172,9 @@
 
 
 #extension-candlecam-view {
-  height: 100%; /*calc(100% - 7.6rem);*/
-  box-sizing: border-box;
-  /*overflow: auto;*/
+    height: 100%; /*calc(100% - 7.6rem);*/
+    box-sizing: border-box;
+    /*overflow: auto;*/
 	overflow: auto;
 	position: absolute;
 	top: 7.6rem;
@@ -163,18 +186,16 @@
 #extension-candlecam-content {
 	display:flex;
 	flex-direction: column;
-	flex-direction: column;
 	overflow: auto;
-  position: relative;
-  text-align: left;
-  font-size: 1.6rem;
-  color: #fff;
-	height:auto;
+    text-align: center;;
+    font-size: 1.6rem;
+    color: #fff;
 }
 
 #extension-candlecam-content-container{
 	height:100%;
 	max-height: 100%;
+    width:100%;
 }
 
 #extension-candlecam-response{
@@ -210,6 +231,7 @@ LIST
 	width:15rem;
 	display:inline-block;
 	padding:.2rem;
+    margin:1rem;
 }
 
 .extension-candlecam-list-item > span{
@@ -254,16 +276,20 @@ LIST
 }
 
 
-#extension-candlecam-clock-container,
-#extension-candlecam-picture-exit-container{
-	width:100%;
-}
-
 #extension-candlecam-picture-exit-container{
 	text-align:center;
+    position:fixed;
+    top:3rem;
+    left:8rem;
+    right:8rem;
 }
 
-
+#extension-candlecam-picture-exit-container button{
+    margin:0 .5rem;
+}
+#extension-candlecam-picture-exit-container button:first-letter{
+  text-transform: capitalize
+}
 
 
 
@@ -273,6 +299,7 @@ LIST
 
 
 #extension-candlecam-settings-button-container{
+    display:none!important; /*  TODO: DISABLED FOR NOW  */
     text-align: right;
     height: 8rem;
     padding-right: 2rem;
@@ -288,6 +315,7 @@ LIST
     background-size: 50%;
     background-color: #79add1;
     right:1.6rem;
+    z-index:99;
 }
 
 
@@ -300,7 +328,8 @@ LIST
     min-width: 40rem;
     max-width: 100%;
     background-color: rgba(0,0,0,.7);
-    padding:2rem 10rem 2rem 2rem;
+    padding:10rem 10rem 2rem 2rem;
+    text-align:left;
 }
 
 
@@ -358,6 +387,10 @@ LIST
     background-image: url('../images/closed-door.svg');
 }
 
+#extension-candlecam-stream-buttons-container{
+    display:inline-block;
+}
+
 #extension-candlecam-shaka-video{
     width: 100%;
     max-width: 100%;
@@ -372,15 +405,12 @@ LIST
 
 
 @media screen and (min-width: 801px) {
-	#extension-candlecam-view-picture-holder{
-		position:absolute;
-		left:0;
-		top: 0;
-		height:100vh; 
-		width:100vw;
-		
-	}
 	
+    /*
+    #extension-candlecam-picture-holder{
+    	align-content: space-between;
+    }
+    */
 	/*
 	#extension-candlecam-content{
 		left:9.6rem;
@@ -392,12 +422,13 @@ LIST
 		top:0;
 		left:9.6rem;
 	}
-	
+	/*
 	#extension-candlecam-content-container{
 		
 		height:auto;
 		width: calc(100% - 11rem);
 	}
+    */
 	
 	/*
 	.extension-candlecam-tab{

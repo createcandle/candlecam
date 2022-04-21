@@ -486,6 +486,8 @@ class CandlecamAPIHandler(APIHandler):
 
             self.matrix_drop_dir = os.path.join(self.user_profile['addonsDir'], 'voco','sendme')
             
+            self.not_streaming_image = os.path.join(self.addon_path, 'images','camera_not_available.jpg')
+            
             self.addon_sounds_dir_path = os.path.join(self.addon_path, 'sounds')
             
             self.addon_sounds_dir_path += os.sep
@@ -2059,7 +2061,6 @@ class StreamOutput(object):
 
     def write(self, buf):
         
-        
         #global new_frame
         global frame
         if self.api_handler.running == False:
@@ -2109,7 +2110,15 @@ class StreamyHandler(tornado.web.RequestHandler):
         #ioloop = tornado.ioloop.IOLoop.current()
         my_boundary = "--jpgboundary"
         self.served_image_timestamp = time.time()
-    
+        
+        not_streaming_image_path = '/home/pi/.webthings/addons/candlecam/images/camera_not_available.jpg'
+        
+        not_streaming_image = b''
+        not_streaming_image_size = os.path.getsize(not_streaming_image_path)
+        with open(not_streaming_image_path, "rb") as file:
+            not_streaming_image = file
+        
+        
         #self.set_header('Cache-Control', 'no-cache, private')
         self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
         self.set_header('Pragma', 'no-cache')
@@ -2137,7 +2146,21 @@ class StreamyHandler(tornado.web.RequestHandler):
                 yield tornado.gen.sleep(.1)
             except Exception as ex:
                 print("Error posting frame: " + str(ex))
-                break
+                
+                
+                self.write(my_boundary + '\r\n')
+                self.write("Content-type: image/jpeg\r\n")
+                self.write("Content-length: %s\r\n\r\n" % not_streaming_image_size)
+                self.write(not_streaming_image)
+            
+                self.write('\r\n')
+                self.served_image_timestamp = time.time()
+                #print(str(self.served_image_timestamp))
+                self.flush()
+                yield tornado.gen.sleep(1)
+                
+                
+                #break
                 
         print("GET DONE")
         
@@ -2223,7 +2246,7 @@ def arpa_detect_gateways(quick=True):
         
         result = subprocess.run(command, shell=True, universal_newlines=True, stdout=subprocess.PIPE) #.decode())
         for line in result.stdout.split('\n'):
-            #print(str(line))
+            print("arp -a line: " + str(line))
             if len(line) > 10:
                 
                 #if quick and "<incomplete>" in line:
@@ -2235,9 +2258,10 @@ def arpa_detect_gateways(quick=True):
 
                 try:
                     ip_address_list = re.findall(r'(?:\d{1,3}\.)+(?:\d{1,3})', str(line))
-                    #print("ip_address_list = " + str(ip_address_list))
+                    print("ip_address_list = " + str(ip_address_list))
                     ip_address = str(ip_address_list[0])
                     if not valid_ip(ip_address):
+                        print("not a valid IP address")
                         continue
                         
                     #print("found valid IP address: " + str(ip_address))

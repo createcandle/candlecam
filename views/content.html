@@ -3,70 +3,74 @@
     <div id="extension-candlecam-content-container">
         
         
+        <!--<video id="extension-candlecam-shaka-video"
+               width="640"
+               poster="/media/candlecam/stream/latest.jpg"
+               controls autoplay></video>-->
+        
         <div id="extension-candlecam-picture-holder">
-            <!--<video id="extension-candlecam-shaka-video"
-                   width="640"
-                   poster="/media/candlecam/stream/latest.jpg"
-                   controls autoplay></video>-->
-            <img id="extension-candlecam-picture" src="/media/candlecam/stream/stream.mjpeg">
-                   
+            <img id="extension-candlecam-picture" src="" alt="Live stream">
+           
             <div id="extension-candlecam-main-buttons-container">
-                <button id="extension-candlecam-save-picture-button" class="icon-button" aria-label="Save picture"></button>
+                <button id="extension-candlecam-save-picture-button" class="icon-button extension-candlecam-hidden" aria-label="Save picture"></button>
                 <div id="extension-candlecam-main-door-buttons-container" class="extension-candlecam-hidden">
                     <button id="extension-candlecam-door-release-button" class="icon-button extension-candlecam-hidden" aria-label="Open door"></button>
                     <button id="extension-candlecam-door-close-button" class="icon-button extension-candlecam-hidden" aria-label="Close door"></button>
                 </div>
-                
-            </div>
-                   
-            <div id="extension-candlecam-clock-container"><div id="extension-candlecam-clock"></div></div>
-            <div id="extension-candlecam-picture-exit-container">
-                <div id="extension-candlecam-picture-exit">Overview</div>
-                <div id="extension-candlecam-stream-buttons-container"></div>
-            </div>
         
-        
-            <div id="extension-candlecam-settings-container" class="extension-candlecam-hidden">
-            
-                <h2>Settings</h2>
-                <p>Here you can select which devices should work together to form a smart doorbell system.</p>
-            
-                <h5>Camera source</h5>
-                <select id="extension-candlecam-camera-source-select" class="extension-candlecam-dropdown">
-                    <option value=""></option>
-                </select>
-            
-                <h5>Push button</h5>
-                <select id="extension-candlecam-push-button-select" class="extension-candlecam-dropdown">
-                    <option value=""></option>
-                </select>
-            
-                <h5>Door release</h5>
-                <select id="extension-candlecam-door-release-select" class="extension-candlecam-dropdown">
-                    <option value=""></option>
-                </select>
-            
             </div>
-        
+            
             <div id="extension-candlecam-settings-button-container">
                 <button id="extension-candlecam-settings-button" class="icon-button" data-l10n-id="settings-button" aria-label="Doorbell settings"></button>
+                
+                <div id="extension-candlecam-settings-container" class="extension-candlecam-hidden">
+        
+                    <h2>Settings</h2>
+                    <p>Here you can select which devices should work together to form a smart doorbell system.</p>
+        
+                    <h5>Camera source</h5>
+                    <select id="extension-candlecam-camera-source-select" class="extension-candlecam-dropdown">
+                        <option value=""></option>
+                    </select>
+        
+                    <h5>Push button</h5>
+                    <select id="extension-candlecam-push-button-select" class="extension-candlecam-dropdown">
+                        <option value=""></option>
+                    </select>
+        
+                    <h5>Door release</h5>
+                    <select id="extension-candlecam-door-release-select" class="extension-candlecam-dropdown">
+                        <option value=""></option>
+                    </select>
+        
+                </div>
+                
             </div>
-            
-        </div>
-        
-        
-        <div id="extension-candlecam-overview">
-            <h3>Saved photos</h3>
-            <ul id="extension-candlecam-photos-list"></ul>
-            
-            <div id="extension-candlecam-response">
-                <p id="extension-candlecam-response-data"></p>
-            </div>
-        </div>
-        
-        
 
+            
+
+        </div>
+
+        <div id="extension-candlecam-overview">
+            <h3 style="text-align:center">Snapshots</h3>
+            <div id="extension-candlecam-snapshot-holder"><img id="extension-candlecam-snapshot" src="" alt="snapshot"/></div>
+            <ul id="extension-candlecam-photos-list"></ul>
+        </div>
+               
+        <div id="extension-candlecam-clock-container"><div id="extension-candlecam-clock"></div></div>
         
+        
+    
+    
+        
+    
+        
+        
+    </div>
+        
+    <div id="extension-candlecam-picture-exit-container">
+        <button id="extension-candlecam-picture-exit" class="text-button extension-candlecam-hidden">Snapshots</button>
+        <div id="extension-candlecam-stream-buttons-container"></div>
     </div>
 
 </div>
