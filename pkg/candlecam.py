@@ -74,7 +74,7 @@ if os.path.isdir("/etc/voicecard"):
 
 
 try:
-    from gateway_addon import Database, Adapter,Device,Property, APIHandler, APIResponse
+    from gateway_addon import Database, Adapter, Device, Property, APIHandler, APIResponse
 except:
     print("Could not load gateway addon library")
     
@@ -152,7 +152,7 @@ class CandlecamAPIHandler(APIHandler):
             self.lights = None
             self.plughw_number = '0,0'
             self.has_respeaker_hat = False
-                        
+            self.ringtones = ['default','classic','klingel','business','fart','none']
             
             # THINGS
             self.things = [] # Holds all the things, updated via the API. Used to display a nicer thing name instead of the technical internal ID.
@@ -251,14 +251,6 @@ class CandlecamAPIHandler(APIHandler):
             print("Failed in first part of init: " + str(ex))
             
             
-        #self.kill_ffmpeg()
-
-        # Adapter is used to send pairing prompt notifications. Currently only used in debug mode.
-        if self.DEBUG:
-            self.adapter = CandlecamAdapter(self)
-            if self.DEBUG:
-                print("Candlecam adapter created")
-                print("self.adapter.user_profile: " + str(self.adapter.user_profile))
         
 
             
@@ -367,6 +359,9 @@ class CandlecamAPIHandler(APIHandler):
             print("Current working directory: " + str(os.getcwd()))
             print("self.user_profile: " + str(self.user_profile))
     
+        
+        self.persistent_data = {}
+    
         try:
         
             self.addon_path = os.path.join(self.user_profile['addonsDir'], self.addon_name)
@@ -386,10 +381,13 @@ class CandlecamAPIHandler(APIHandler):
             
             
             # Get persistent data
-            self.persistence_file_path = self.adapter.persistence_file_path
+            
+            
+            
+            #self.persistence_file_path = self.adapter.persistence_file_path
             if self.DEBUG:
                 print("self.persistence_file_path = " + str(self.persistence_file_path))
-            self.persistent_data = {}
+            
             first_run = False
             try:
                 with open(self.persistence_file_path) as f:
@@ -441,8 +439,9 @@ class CandlecamAPIHandler(APIHandler):
             if 'thing_server_id' not in self.persistent_data:    
                 self.persistent_data['thing_server_id'] = randomWord(4)
             
-            print("\n\nself.persistent_data: " + str(self.persistent_data))
-            print("\n\nthing_server_id: " + str(self.persistent_data['thing_server_id']))
+            if self.DEBUG:
+                print("\n\nself.persistent_data: " + str(self.persistent_data))
+                print("\n\nthing_server_id: " + str(self.persistent_data['thing_server_id']))
     
             system_hostname = socket.gethostname().lower()
             self.hosts = [
@@ -623,6 +622,18 @@ class CandlecamAPIHandler(APIHandler):
                 self.ramdrive_created = True
 
         """
+        
+        
+        # Create adapter
+        try:
+            self.adapter = CandlecamAdapter(self)
+            if self.DEBUG:
+                print("Candlecam adapter created")
+                print("self.adapter.user_profile: " + str(self.adapter.user_profile))
+        except Exception as ex:
+            print("api handler: error creating adapter: " + str(ex))
+            
+            
         
         # Start stream if necessary
         if self.camera_available and self.persistent_data['streaming']:
@@ -1179,9 +1190,8 @@ class CandlecamAPIHandler(APIHandler):
             thing.add_property(
                 webthing.Property(thing,
                          'led_brightness',
-                         Value(self.persistent_data['led_brightness'], lambda v: self.set_led(self.persistent_data['led_color'],v)),
+                         Value(self.persistent_data['led_brightness'], lambda v: self.set_led(self.persistent_data['led_brightness'],v)),
                          metadata={
-                             '@type': 'BrightnessProperty',
                              'title': 'Brightness',
                              'type': 'integer',
                              'description': 'The brightness of the built-in color LED',
@@ -1193,7 +1203,7 @@ class CandlecamAPIHandler(APIHandler):
             thing.add_property(
                 webthing.Property(thing,
                          'led_color',
-                         Value(self.persistent_data['led_color'], lambda v: self.set_led(v,self.persistent_data['led_brightness'])),
+                         Value(self.persistent_data['led_color'], lambda v: self.set_led(v,self.persistent_data['led_color'])),
                          metadata={
                              '@type': 'ColorProperty',
                              'title': 'Color',
@@ -1209,7 +1219,7 @@ class CandlecamAPIHandler(APIHandler):
                              'title': 'Ringtone',
                              'type': 'string',
                              'description': 'The volume of the tone being played at the door itself',
-                             'enum':['default','classic','klingel','business','fart','none']
+                             'enum':self.ringtones
                          }))
                          
                          
@@ -1327,7 +1337,7 @@ class CandlecamAPIHandler(APIHandler):
                     self.move_cover('closed')
                     
                     
-    def move_cover(self,state):
+    def move_cover(self,state,save=True):
         if self.has_respeaker_hat and self.camera_available:
             
             if state == 'closed':
@@ -1368,8 +1378,9 @@ class CandlecamAPIHandler(APIHandler):
                 print("no hat and/or no camera, so no need to move the servo")
         #if self.politeness:
         #    state = 'closed'
-        self.persistent_data['cover_state'] = state
-        self.save_persistent_data()
+        if save:
+            self.persistent_data['cover_state'] = state
+            self.save_persistent_data()
 
 
 
@@ -1383,6 +1394,10 @@ class CandlecamAPIHandler(APIHandler):
             self.move_cover('closed')
             self.streaming_change(False)
 
+        try:
+            self.adapter.candlecam_device.properties["politeness"].update(politeness_state)
+        except Exception as ex:
+            print("Error setting politeness_state on thing: " + str(ex))
 
 
     def volume_change(self,volume):
@@ -1391,7 +1406,10 @@ class CandlecamAPIHandler(APIHandler):
         self.persistent_data['ringtone_volume'] = volume
         self.save_persistent_data()            
 
-
+        try:
+            self.adapter.candlecam_device.properties["ringtone_volume"].update(volume)
+        except Exception as ex:
+            print("Error setting ringtone volume on thing: " + str(ex))
 
 
     def streaming_change(self,state):
@@ -1404,6 +1422,7 @@ class CandlecamAPIHandler(APIHandler):
             return
         
         global streaming
+        
         
         
         # START STREAMING
@@ -1437,7 +1456,7 @@ class CandlecamAPIHandler(APIHandler):
                     print("Error starting the picamera thread")
 
             self.move_cover('open')
-             
+            
         # STOP STREAMING
         else:
             if self.DEBUG:
@@ -1468,6 +1487,11 @@ class CandlecamAPIHandler(APIHandler):
 
             self.move_cover('closed')
         
+        try:
+            self.adapter.candlecam_device.properties["streaming"].update(state)
+        except Exception as ex:
+            print("Error setting state on thing: " + str(ex))
+        
         self.persistent_data['streaming'] = state
         self.save_persistent_data()
 
@@ -1480,6 +1504,12 @@ class CandlecamAPIHandler(APIHandler):
         self.persistent_data['ringtone'] = choice
         self.save_persistent_data()
         self.play_ringtone()
+        
+        try:
+            self.adapter.candlecam_device.properties["ringtone"].update(choice)
+        except Exception as ex:
+            print("Error setting ringtone on thing: " + str(ex))
+        
 
 
 
@@ -1508,7 +1538,7 @@ class CandlecamAPIHandler(APIHandler):
 
         
         
-    def set_led(self,hex,brightness,save=True):
+    def set_led(self,hex,brightness,save=True): # sometimes the color should not be save saved, E.g. when the led turns red temporarily when the button is pressed
         if self.DEBUG:
             print("setting led color to: " + str(hex))
             print("setting led brightness to: " + str(brightness) + "%")
@@ -1518,6 +1548,16 @@ class CandlecamAPIHandler(APIHandler):
             self.persistent_data['led_color'] = hex
             self.persistent_data['led_brightness'] = brightness
             self.save_persistent_data()
+        
+            try:
+                self.adapter.candlecam_device.properties["led_color"].update(str(hex))
+            except Exception as ex:
+                print("Error setting color on thing: " + str(ex))
+
+            try:
+                self.adapter.candlecam_device.properties["led_brightness"].update(int(brightness))
+            except Exception as ex:
+                print("Error setting led brightness on thing: " + str(ex))
         
         try:
             hex = hex.lstrip('#')
@@ -1543,7 +1583,6 @@ class CandlecamAPIHandler(APIHandler):
             
         except Exception as ex:
             print("could not set LED brightness: " + str(ex))
-
 
 
     
@@ -2226,49 +2265,6 @@ class CandlecamAPIHandler(APIHandler):
 
 
 
-#
-#  ADAPTER
-#
-
-
-class CandlecamAdapter(Adapter):
-    """Adapter for Candlecam"""
-
-    def __init__(self, verbose=False):
-        """
-        Initialize the object.
-
-        verbose -- whether or not to enable verbose logging
-        """
-
-        #print("initialising adapter from class")
-        self.addon_name = 'candlecam'
-        self.name = self.__class__.__name__
-        Adapter.__init__(self, self.addon_name, self.addon_name, verbose=verbose)
-
-        # Setup persistence
-        #for path in _CONFIG_PATHS:
-        #    if os.path.isdir(path):
-        #        self.persistence_file_path = os.path.join(
-        #            path,
-        #            'candlecam-persistence.json'
-        #        )
-        #        print("self.persistence_file_path is now: " + str(self.persistence_file_path))
-
-        self.addon_path = os.path.join(self.user_profile['addonsDir'], self.addon_name)
-        #self.persistence_file_path = os.path.join(os.path.expanduser('~'), '.mozilla-iot', 'data', self.addon_name,'persistence.json')
-        self.persistence_dir_path = os.path.join(self.user_profile['dataDir'], self.addon_name)
-        self.persistence_file_path = os.path.join(self.persistence_dir_path, 'persistence.json')
-
-
-        # Make sure the persistence data directory exists
-        try:
-            if not os.path.isdir(self.persistence_dir_path):
-                os.mkdir( self.persistence_dir_path )
-                print("Persistence directory did not exist, created it now")
-        except:
-            print("Error: could not make sure persistence dir exists. intended persistence dir path: " + str(self.persistence_dir_path))
-        
 
 
 #
@@ -2497,6 +2493,279 @@ class SnapshotHandler(tornado.web.RequestHandler):
         pass
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#
+#  ADAPTER
+#
+
+
+class CandlecamAdapter(Adapter):
+    """Adapter for Candlecam"""
+
+    def __init__(self, api_handler, verbose=False):
+        """
+        Initialize the object.
+
+        verbose -- whether or not to enable verbose logging
+        """
+
+        #print("initialising adapter from class")
+        self.addon_name = 'candlecam'
+        self.name = self.__class__.__name__
+        Adapter.__init__(self, self.addon_name, self.addon_name, verbose=verbose)
+
+        self.api_handler = api_handler
+        self.DEBUG = api_handler.DEBUG
+
+        print("self.api_handler.name: " + str(self.api_handler.name))
+        
+        # Create the candlecam device
+        try:
+            self.candlecam_device = CandlecamDevice(self) # self.audio_output_options
+            self.handle_device_added(self.candlecam_device)
+            if self.DEBUG:
+                print("candlecam_device created")
+            self.devices['candlecam'].connected = True
+            self.devices['candlecam'].connected_notify(True)
+
+        except Exception as ex:
+            print("Could not create candlecam_device: " + str(ex))
+            
+
+
+#
+# DEVICE
+#
+
+class CandlecamDevice(Device):
+    """Candlecam device type."""
+
+    def __init__(self, adapter):
+        """
+        Initialize the object.
+        adapter -- the Adapter managing this device
+        """
+
+        Device.__init__(self, adapter, 'candlecam')
+
+        self._id = 'candlecam'
+        self.id = 'candlecam'
+        self.adapter = adapter
+        self.api_handler = adapter.api_handler
+        self.DEBUG = self.api_handler.DEBUG
+
+        self.name = 'Candlecam'
+        self.title = 'Candle Camera'
+        self.description = 'A privacy friendly smart doorbell or security camera'
+        self._type = ['OnOffSwitch']
+        #self.connected = False
+
+
+        try:
+
+            self.properties["streaming"] = CandlecamProperty(
+                            self,
+                            "streaming",
+                            {
+                                '@type': 'OnOffProperty',
+                                'label': "Streaming",
+                                'type': 'boolean'
+                            },
+                            self.api_handler.persistent_data['streaming'])
+
+
+            self.properties["politeness"] = CandlecamProperty(
+                            self,
+                            "spoliteness",
+                            {
+                                'label': "Politeness",
+                                'type': 'boolean'
+                            },
+                            self.api_handler.persistent_data['politeness'])
+            
+            
+            self.properties["snapshot"] = CandlecamProperty(
+                            self,
+                            "snapshot",
+                            {
+                                'label': "Take snapshot",
+                                'type': 'boolean'
+                            },
+                            False)
+            
+                            
+            self.properties["ringtone"] = CandlecamProperty(
+                            self,
+                            "ringtone",
+                            {
+                                'label': "Ring tone",
+                                'type': 'string',
+                                'enum': self.api_handler.ringtones,
+                            },
+                            self.api_handler.persistent_data['ringtone'])
+                            
+            
+            self.properties["ringtone_volume"] = CandlecamProperty(
+                            self,
+                            "ringtone_volume",
+                            {
+                                '@type': 'LevelProperty',
+                                'label': "Ringtone volume",
+                                'type': 'integer',
+                                'minimum': 0,
+                                'maximum': 100,
+                                'unit': 'percent'
+                            },
+                            self.api_handler.persistent_data['ringtone_volume'])
+
+
+            self.properties["led_color"] = CandlecamProperty(
+                            self,
+                            "led_color",
+                            {
+                                '@type': 'ColorProperty',
+                                'title': 'Color',
+                                'type': 'string',
+                                'description': 'The color of the built-in LED',
+                            },
+                            self.api_handler.persistent_data['led_color'])
+
+            
+            self.properties["led_brightness"] = CandlecamProperty(
+                            self,
+                            "led_brightness",
+                            {
+                                '@type': 'LevelProperty',
+                                'label': "LED brightness",
+                                'type': 'integer',
+                                'minimum': 0,
+                                'maximum': 100,
+                                'unit': 'percent'
+                            },
+                            self.api_handler.persistent_data['led_brightness'])
+            
+
+            """
+            if sys.platform != 'darwin':
+                print("adding audio output property with list: " + str(audio_output_list))
+                self.properties["audio output"] = CandlecamProperty(
+                                self,
+                                "audio output",
+                                {
+                                    'label': "Audio output",
+                                    'type': 'string',
+                                    'enum': audio_output_list,
+                                },
+                                self.adapter.persistent_data['audio_output'])
+            """
+            
+        except Exception as ex:
+            print("error adding properties: " + str(ex))
+
+        print("Candlecam thing has been created.")
+
+
+
+#
+# PROPERTY
+#
+
+class CandlecamProperty(Property):
+
+    def __init__(self, device, name, description, value):
+        Property.__init__(self, device, name, description)
+        self.device = device
+        self.name = name
+        self.title = name
+        self.description = description # dictionary
+        self.value = value
+        self.set_cached_value(value)
+
+
+
+    def set_value(self, value):
+        print("property: set_value called for " + str(self.title))
+        print("property: set value to: " + str(value))
+        
+        #self.api_handler.set_led(self.api_handler.persistent_data['led_color'],self.api_handler.persistent_data['led_brightness'], False)
+        
+        try:
+            if self.name == 'streaming':
+                self.device.api_handler.streaming_change(bool(value))
+                #self.update(bool(value))
+
+            elif self.name == 'snapshot':
+                self.device.api_handler.take_a_photo = True
+                self.update(True)
+                time.sleep(2)
+                self.update(False)
+                
+            elif self.name == 'politeness':
+                self.device.api_handler.politeness_change(bool(value))
+                
+            elif self.name == 'ringtone':
+                self.device.api_handler.ringtone_change(str(value))
+                #self.update(str(value))
+                
+            elif self.name == 'ringtone_volume':
+                self.device.api_handler.volume_change(int(value))
+                #self.update(int(value))
+
+            elif self.name == 'led_color':
+                self.device.api_handler.set_led(value,self.device.api_handler.persistent_data['led_brightness'])
+                #self.update(str(value))
+                
+            elif self.name == 'led_brightness':
+                self.device.api_handler.set_led(self.device.api_handler.persistent_data['led_color'],int(value))
+                #self.update(int(value))
+                
+            #if self.name == 'audio output':
+            #    self.device.api_handler.set_audio_output(str(value))
+
+        except Exception as ex:
+            print("set_value error: " + str(ex))
+
+
+
+    def update(self, value):
+        #print("property -> update")
+        if value != self.value:
+            self.value = value
+            self.set_cached_value(value)
+            self.device.notify_property_changed(self)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#
+#  HELPER FUNCTIONS
+#
 
 def get_ip():
     """
