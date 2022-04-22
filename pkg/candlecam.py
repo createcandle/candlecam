@@ -916,7 +916,8 @@ class CandlecamAPIHandler(APIHandler):
                         # TODO: could be a security feature in the future
                         if time.time() - 1 > self.last_write_time:
                             #if self.DEBUG:
-                            print("saving a photo from the picamera stream")
+                            if self.DEBUG:
+                                print("saving a photo from the picamera stream")
                             self.last_write_time = time.time()
                             #with open(self.mjpeg_file_path, "wb") as binary_file: # if continous storage for mjpeg serving via webthings standard is required
                             with open(file_path, "wb") as binary_file:
@@ -926,8 +927,9 @@ class CandlecamAPIHandler(APIHandler):
                             # We end up here if the "shortcut" option was used to quickly save a snapshot from the local camera
                             if self.copy_saved_files_to_matrix:
                                 if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
-                                    print("sending file to Matrix via Voco")
-                                    drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + filename)
+                                    if self.DEBUG:
+                                        print("sending file to Matrix via Voco")
+                                    drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + socket.gethostname().lower() + '_' + filename)
                                     os.system('cp ' + file_path + ' ' + drop_file_path)
                                 
                     if streaming == False or self.persistent_data['streaming'] == False:
@@ -2550,14 +2552,15 @@ class CandlecamAdapter(Adapter):
         """
 
         #print("initialising adapter from class")
-        self.addon_name = 'candlecam'
+        self.addon_name = 'candlecam_adapter'
         self.name = self.__class__.__name__
         Adapter.__init__(self, self.addon_name, self.addon_name, verbose=verbose)
 
         self.api_handler = api_handler
         self.DEBUG = api_handler.DEBUG
 
-        print("self.api_handler.name: " + str(self.api_handler.name))
+        if self.DEBUG:
+            print("self.api_handler.name: " + str(self.api_handler.name))
         
         # Create the candlecam device
         try:
@@ -2565,8 +2568,8 @@ class CandlecamAdapter(Adapter):
             self.handle_device_added(self.candlecam_device)
             if self.DEBUG:
                 print("candlecam_device created")
-            self.devices['candlecam'].connected = True
-            self.devices['candlecam'].connected_notify(True)
+            self.devices['candlecam_device'].connected = True
+            self.devices['candlecam_device'].connected_notify(True)
 
         except Exception as ex:
             print("Could not create candlecam_device: " + str(ex))
@@ -2586,15 +2589,15 @@ class CandlecamDevice(Device):
         adapter -- the Adapter managing this device
         """
 
-        Device.__init__(self, adapter, 'candlecam')
+        Device.__init__(self, adapter, 'candlecam_device')
 
-        self._id = 'candlecam'
-        self.id = 'candlecam'
+        self._id = 'candlecam_device'
+        self.id = 'candlecam_device'
         self.adapter = adapter
         self.api_handler = adapter.api_handler
         self.DEBUG = self.api_handler.DEBUG
 
-        self.name = 'Candlecam'
+        self.name = 'Candlecam_device'
         self.title = 'Candle Camera'
         self.description = 'A privacy friendly smart doorbell or security camera'
         self._type = ['OnOffSwitch']
@@ -2723,7 +2726,8 @@ class CandlecamDevice(Device):
         except Exception as ex:
             print("error adding properties: " + str(ex))
 
-        print("Candlecam thing has been created.")
+        if self.DEBUG:
+            print("Candlecam thing has been created.")
 
 
 
@@ -2745,8 +2749,8 @@ class CandlecamProperty(Property):
 
 
     def set_value(self, value):
-        print("property: set_value called for " + str(self.title))
-        print("property: set value to: " + str(value))
+        #print("property: set_value called for " + str(self.title))
+        #print("property: set value to: " + str(value))
         
         #self.api_handler.set_led(self.api_handler.persistent_data['led_color'],self.api_handler.persistent_data['led_brightness'], False)
         

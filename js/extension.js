@@ -106,11 +106,11 @@
                 const push_button_select = document.getElementById('extension-candlecam-push-button-select');
                 const door_release_select = document.getElementById('extension-candlecam-door-release-select');
         
-                console.log("GOT THINGS");
-                console.log(this.thing_settings);
+                //console.log("GOT THINGS");
+                //console.log(this.thing_settings);
                 if(this.thing_settings != null){
-                    console.log("this.thing_settings.camera_source_thing_id: ", this.thing_settings.camera_source_thing_id);
-                    console.log("this.thing_settings['camera_source_thing_id'] = " + this.thing_settings['camera_source_thing_id'] );
+                    //console.log("this.thing_settings.camera_source_thing_id: ", this.thing_settings.camera_source_thing_id);
+                    //console.log("this.thing_settings['camera_source_thing_id'] = " + this.thing_settings['camera_source_thing_id'] );
                 }
                 
     			this.all_things = things;
@@ -237,7 +237,7 @@
       				{'action':'init'}
 
             ).then((body) => {
-                console.log(".");
+                //console.log(".");
       			console.log("init returned:");
       			console.log(body);
                 //body_parsed = JSON.parse(body);
@@ -264,24 +264,24 @@
                     
         			var stream_urls = [];
                     if(typeof body['gateways'] != 'undefined'){
-                        console.log("got gateways: ", body['gateways']);
-                        console.log("got gateways typeof: ", typeof body['gateways']);
-                        console.log("gateways length: ", Object.keys(body['gateways']).length );
+                        //console.log("got gateways: ", body['gateways']);
+                        //console.log("got gateways typeof: ", typeof body['gateways']);
+                        //console.log("gateways length: ", Object.keys(body['gateways']).length );
                         const stream_urls_count = Object.keys(body['gateways']).length;
                         const gateways_keys = Object.keys(body['gateways']);
-                        console.log('gateways_keys: ', gateways_keys);
+                        //console.log('gateways_keys: ', gateways_keys);
                         
                         
                         for (var g = 0; g < Object.keys(body['gateways']).length; g++){
-                            console.log(g, gateways_keys[g]);
+                            //console.log(g, gateways_keys[g]);
                             let gateway = body['gateways'][ gateways_keys[g] ];
-                            console.log("name: ", gateway);
+                            //console.log("name: ", gateway);
                             const stream_url = 'http://' + gateways_keys[g] + ':8889/media/candlecam/stream/stream.mjpeg';
                         
                             stream_urls.push( stream_url );
                             
                             //if(stream_urls_count > 1){
-                                console.log("creating buttons");
+                                //console.log("creating buttons");
                                 var button_el = document.createElement('button');
                                 //i.setAttribute("type", "text");
                                 button_el.innerText = gateway;
@@ -292,10 +292,10 @@
             			            //console.log('stream button clicked. Event: ', event.target);
                                     //event.stopImmediatePropagation();
                                     let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
-                                    console.log("desired_stream_url: ", desired_stream_url);
+                                    //console.log("desired_stream_url: ", desired_stream_url);
                                     
                                     if( document.getElementById('extension-candlecam-picture').src != desired_stream_url){
-                                        console.log("- changing src");
+                                        //console.log("- changing src");
                                         document.getElementById('extension-candlecam-picture').src = desired_stream_url;
                                     }
                                     else{
@@ -313,7 +313,7 @@
                         }
                         
                     }
-                    console.log("final stream_urls: ", stream_urls);
+                    //console.log("final stream_urls: ", stream_urls);
                 
                     if(stream_urls.length > 0){
                         document.getElementById('extension-candlecam-picture').src = stream_urls[0];
@@ -451,7 +451,7 @@
                 
                 let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
                 if(desired_stream_url != null){
-                    console.log("save picture: desired_stream_url: ", desired_stream_url);
+                    //console.log("save picture: desired_stream_url: ", desired_stream_url);
                 
                     document.getElementById("extension-candlecam-save-picture-button").classList.add('extension-candlecam-busy-saving-snapshot');
                     
@@ -461,8 +461,8 @@
                         'stream_url':desired_stream_url}
                     
         	        ).then((body) => {
-        	  			console.log("grab_picture_from_stream returned:");
-        	  			console.log(body);
+        	  			//console.log("grab_picture_from_stream returned:");
+        	  			//console.log(body);
                         if(body['state']){
                             this.saved_photos_list = body['photos'];
                             this.show_list(body['photos']);
@@ -622,8 +622,8 @@
                     'stream_url': stream_url}
 
             ).then((body) => {
-      			console.log("grab_mjeg_frame returned:");
-      			console.log(body);
+      			//console.log("grab_mjeg_frame returned:");
+      			//console.log(body);
                 //body_parsed = JSON.parse(body);
                 //console.log(body_parsed);
                 //this.thing_settings = JSON.parse(body['thing_settings']);
@@ -643,10 +643,10 @@
     	//
 
         async generate_ui(){
-            console.log("Generating UI");
+            //console.log("Generating UI");
             //console.log("this.push_button_thing_id: " + this.push_button_thing_id);
         
-            console.log(this.all_things);
+            //console.log(this.all_things);
         
             const things = this.all_things;
         
@@ -659,40 +659,40 @@
     			else if( things[key].hasOwnProperty('label') ){
     				thing_title = things[key]['label'];
     			}
-                console.log(things[key]['href']);
-                console.log('/things/' + this.camera_source_thing_id);
+                //console.log(things[key]['href']);
+                //console.log('/things/' + this.camera_source_thing_id);
             
                 // LOAD VIDEO
                 if(things[key]['href'] == '/things/' + this.thing_settings.camera_source_thing_id){
-                    console.log("bingo1");
+                    //console.log("bingo1");
                     for (let prop in things[key]['properties']){
                         console.log(prop);
                         //console.log(things[key]['properties'][prop]['name']);
                         //console.log(this.camera_source_property_id);
                         if(things[key]['properties'][prop]['name'] == this.thing_settings.camera_source_property_id){
-                            console.log("bingo2. Found the property for the camera thing");
-                            console.log("things[key]['properties'][prop] = ", things[key]['properties'][prop]);
-                            console.log("things[key]['properties'][prop]['links'] = ", things[key]['properties'][prop]['links']);
+                            //console.log("bingo2. Found the property for the camera thing");
+                            //console.log("things[key]['properties'][prop] = ", things[key]['properties'][prop]);
+                            //console.log("things[key]['properties'][prop]['links'] = ", things[key]['properties'][prop]['links']);
                             
                             var link_variable_name = "links";
                             if(typeof things[key]['properties'][prop]['forms'] != 'undefined'){ // For gateway 1.1.0 which follows a new convention
-                                console.log("FORMS array spotted");
+                                //console.log("FORMS array spotted");
                                 link_variable_name = "forms";
                             }
                             for (var i = 0; i < things[key]['properties'][prop][link_variable_name].length; i++) {
-                                console.log(things[key]['properties'][prop][link_variable_name][i]);
+                                //console.log(things[key]['properties'][prop][link_variable_name][i]);
                                 if(typeof things[key]['properties'][prop][link_variable_name][i]['rel'] != 'undefined'){
                                     if(things[key]['properties'][prop][link_variable_name][i]['rel'] == 'alternate'){
                                         //if(things[key]['properties'][prop]['links'][i]['mediaType'] == 'application/dash+xml'){
                                             try {
-                                                console.log("loading video: " + things[key]['properties'][prop][link_variable_name][i]['href']);
+                                                //console.log("loading video: " + things[key]['properties'][prop][link_variable_name][i]['href']);
                                         
                                                 await window.player.load( things[key]['properties'][prop][link_variable_name][i]['href'] +'?jwt=' + API.jwt );
                                                 // This runs if the asynchronous load is successful.
                                                 //console.log('- The video has now been loaded!');
                                                 break;
                                             } catch (e) {
-                                                console.log('- Loading video failed');
+                                                //console.log('- Loading video failed');
                                                 // onError is executed if the asynchronous load fails.
                                                 //console.log(e);
                                             }
@@ -700,13 +700,13 @@
                                     } 
                                 }
                                 else if(typeof things[key]['properties'][prop][link_variable_name][i]['href'] != 'undefined'){
-                                    console.log("no rel spotted, but a href was spotted. Probably gateway 1.1.0 or higher.");
+                                    //console.log("no rel spotted, but a href was spotted. Probably gateway 1.1.0 or higher.");
                                     try {
-                                        console.log("loading video: " + things[key]['properties'][prop][link_variable_name][i]['href'] +'?jwt=' + API.jwt);
+                                        //console.log("loading video: " + things[key]['properties'][prop][link_variable_name][i]['href'] +'?jwt=' + API.jwt);
                                 
                                         await window.player.load( things[key]['properties'][prop][link_variable_name][i]['href'] +'?jwt=' + API.jwt );
                                         // This runs if the asynchronous load is successful.
-                                        console.log('- The video sohuld now be loaded!');
+                                        //console.log('- The video sohuld now be loaded!');
                                         break;
                                     } catch (e) {
                                         console.log('- Loading video failed: ', e);
@@ -724,14 +724,14 @@
             }
             
             // Show or hide door control buttons
-            console.log("door buttons check");
+            //console.log("door buttons check");
             const door_buttons_container = document.getElementById('extension-candlecam-main-door-buttons-container');
             if(this.thing_settings.door_release_property_id == null || typeof this.thing_settings.door_release_property_id == 'undefined'){
-                console.log("add hidden class to door-buttons-container");
+                //console.log("add hidden class to door-buttons-container");
                 this.addClass(door_buttons_container,'extension-candlecam-hidden');
             }
             else{
-                console.log("remove hidden class for door-buttons-container");
+                //console.log("remove hidden class for door-buttons-container");
                 this.removeClass(door_buttons_container,'extension-candlecam-hidden');
             }
             
