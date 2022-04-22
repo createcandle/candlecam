@@ -149,10 +149,12 @@ class CandlecamAPIHandler(APIHandler):
             
             # RESPEAKER
             self.has_respeaker_hat = False
+            self.pwm = None
             self.lights = None
             self.plughw_number = '0,0'
             self.has_respeaker_hat = False
             self.ringtones = ['default','classic','klingel','business','fart','none']
+            
             
             # THINGS
             self.things = [] # Holds all the things, updated via the API. Used to display a nicer thing name instead of the technical internal ID.
@@ -1655,9 +1657,11 @@ class CandlecamAPIHandler(APIHandler):
             print("\n\nIn NETWORK SCAN")
             
         if self.busy_doing_network_scan:
+            if self.DEBUG:
+                print("- already doing scan, returning existing dict")
             return self.gateways_ip_dict
             
-        if self.last_network_scan_time + 120 < time.time():
+        if (self.last_network_scan_time + 300) < time.time():
             self.last_network_scan_time = int(time.time())
             self.busy_doing_network_scan = True
             if self.DEBUG:
@@ -1736,7 +1740,7 @@ class CandlecamAPIHandler(APIHandler):
             if request.method != 'POST':
                 return APIResponse(status=404)
             
-            if request.path == '/init' or request.path == '/list' or request.path == '/delete' or request.path == '/save' or request.path == '/wake' or request.path == '/ajax':
+            if request.path == '/ajax' or request.path == '/list' or request.path == '/delete':
 
                 try:
                     if request.path == '/ajax':
@@ -1797,13 +1801,7 @@ class CandlecamAPIHandler(APIHandler):
                                     if 'stream_url' in request.body:
                                         stream_url = str(request.body['stream_url'])    
                                     
-                                        if stream_url.endswith('mjpg') or stream_url.endswith('mjpeg'):
-                                            
-                                            if '/media/candlecam/stream/stream.mjpeg' in stream_url:
-                                                stream_url = stream_url.replace('/media/candlecam/stream/stream.mjpeg','/snapshot.jpg')
-                                                state = self.download_snapshot(stream_url)
-                                            else:
-                                                state = self.grab_mjpeg_frame(stream_url)
+                                        state = self.grab_snapshots(stream_url)
                                             
                                         time.sleep(1)
                                         try:
@@ -2017,7 +2015,8 @@ class CandlecamAPIHandler(APIHandler):
         #os.system('pkill libcamera-vid')
         
         try:
-            self.pwm.stop()
+            if self.pwm != None:
+                self.pwm.stop()
             #self.pi.stop()
             
         except Exception as ex:
@@ -2048,15 +2047,43 @@ class CandlecamAPIHandler(APIHandler):
 
         
 
-        time.sleep(1)
+        #time.sleep(1)
         if self.ramdrive_created:
             print("unmounting ramdrive")
             os.system('sudo umount ' + self.media_stream_dir_path)
-        if self.DEBUG:
-            print("candlecam ramdrive unmounted")
+            if self.DEBUG:
+                print("candlecam ramdrive unmounted")
 
 
     
+    def grab_snapshots(self,url=None):
+        if self.DEBUG:
+            print("in grab_snapshots")
+        
+        try:
+            stream_urls = []
+            if url == None:
+                for ip in self.gateways_ip_dict.keys():
+                    stream_urls.append('http://' + ip + ':8889/media/candlecam/stream/stream.mjpeg')
+            else:
+                stream_urls = [url]
+            
+            if self.DEBUG:
+                print("grab_snapshots: stream_urls: " + str(stream_urls))
+        
+            for stream_url in stream_urls:
+                if stream_url.endswith('mjpg') or stream_url.endswith('mjpeg'):
+            
+                    if '/media/candlecam/stream/stream.mjpeg' in stream_url:
+                        stream_url = stream_url.replace('/media/candlecam/stream/stream.mjpeg','/snapshot.jpg')
+                        state = self.download_snapshot(stream_url)
+                    else:
+                        state = self.grab_mjpeg_frame(stream_url)
+        except Exception as ex:
+            print("error grabbing snapshots: " + str(ex))
+            return False
+        
+        return True
 
 
     def grab_mjpeg_frame(self, stream_url):
@@ -2386,9 +2413,9 @@ class StreamyHandler(tornado.web.RequestHandler):
                     print("Too many viewers, stopping get loop: " + str(self.viewer_count))
                     break
                     
-                if streaming == False:
-                    print("streaming was set to disabled")
-                    break
+                #if streaming == False:
+                #    print("streaming was set to disabled")
+                #    break
                     
                 yield tornado.gen.sleep(mjpg_interval)
                 
@@ -2575,102 +2602,123 @@ class CandlecamDevice(Device):
 
 
         try:
-
-            self.properties["streaming"] = CandlecamProperty(
-                            self,
-                            "streaming",
-                            {
-                                '@type': 'OnOffProperty',
-                                'label': "Streaming",
-                                'type': 'boolean'
-                            },
-                            self.api_handler.persistent_data['streaming'])
-
-
-            self.properties["politeness"] = CandlecamProperty(
-                            self,
-                            "spoliteness",
-                            {
-                                'label': "Politeness",
-                                'type': 'boolean'
-                            },
-                            self.api_handler.persistent_data['politeness'])
             
-            
-            self.properties["snapshot"] = CandlecamProperty(
-                            self,
-                            "snapshot",
-                            {
-                                'label': "Take snapshot",
-                                'type': 'boolean'
-                            },
-                            False)
-            
-                            
-            self.properties["ringtone"] = CandlecamProperty(
-                            self,
-                            "ringtone",
-                            {
-                                'label': "Ring tone",
-                                'type': 'string',
-                                'enum': self.api_handler.ringtones,
-                            },
-                            self.api_handler.persistent_data['ringtone'])
-                            
-            
-            self.properties["ringtone_volume"] = CandlecamProperty(
-                            self,
-                            "ringtone_volume",
-                            {
-                                '@type': 'LevelProperty',
-                                'label': "Ringtone volume",
-                                'type': 'integer',
-                                'minimum': 0,
-                                'maximum': 100,
-                                'unit': 'percent'
-                            },
-                            self.api_handler.persistent_data['ringtone_volume'])
-
-
-            self.properties["led_color"] = CandlecamProperty(
-                            self,
-                            "led_color",
-                            {
-                                '@type': 'ColorProperty',
-                                'title': 'Color',
-                                'type': 'string',
-                                'description': 'The color of the built-in LED',
-                            },
-                            self.api_handler.persistent_data['led_color'])
-
-            
-            self.properties["led_brightness"] = CandlecamProperty(
-                            self,
-                            "led_brightness",
-                            {
-                                '@type': 'LevelProperty',
-                                'label': "LED brightness",
-                                'type': 'integer',
-                                'minimum': 0,
-                                'maximum': 100,
-                                'unit': 'percent'
-                            },
-                            self.api_handler.persistent_data['led_brightness'])
-            
-
-            """
-            if sys.platform != 'darwin':
-                print("adding audio output property with list: " + str(audio_output_list))
-                self.properties["audio output"] = CandlecamProperty(
+            if self.api_handler.camera_available:
+                
+                self.properties["streaming"] = CandlecamProperty(
                                 self,
-                                "audio output",
+                                "streaming",
                                 {
-                                    'label': "Audio output",
-                                    'type': 'string',
-                                    'enum': audio_output_list,
+                                    '@type': 'OnOffProperty',
+                                    'label': "Streaming",
+                                    'type': 'boolean'
                                 },
-                                self.adapter.persistent_data['audio_output'])
-            """
+                                self.api_handler.persistent_data['streaming'])
+
+
+                # snapshots can always be taken
+                self.properties["snapshot"] = CandlecamProperty(
+                                    self,
+                                    "snapshot",
+                                    {
+                                        'label': "Take snapshot",
+                                        'type': 'boolean'
+                                    },
+                                    False)
+
+            else:
+                # snapshots can always be taken
+                self.properties["snapshot"] = CandlecamProperty(
+                                    self,
+                                    "snapshot",
+                                    {
+                                        '@type': 'OnOffProperty',
+                                        'label': "Take snapshot",
+                                        'type': 'boolean'
+                                    },
+                                    False)
+                                
+
+
+            if self.api_handler.has_respeaker_hat:
+                
+                self.properties["politeness"] = CandlecamProperty(
+                                self,
+                                "spoliteness",
+                                {
+                                    'label': "Politeness",
+                                    'type': 'boolean'
+                                },
+                                self.api_handler.persistent_data['politeness'])
+            
+            
+            
+            
+                            
+                self.properties["ringtone"] = CandlecamProperty(
+                                self,
+                                "ringtone",
+                                {
+                                    'label': "Ring tone",
+                                    'type': 'string',
+                                    'enum': self.api_handler.ringtones,
+                                },
+                                self.api_handler.persistent_data['ringtone'])
+                            
+            
+                self.properties["ringtone_volume"] = CandlecamProperty(
+                                self,
+                                "ringtone_volume",
+                                {
+                                    '@type': 'LevelProperty',
+                                    'label': "Ringtone volume",
+                                    'type': 'integer',
+                                    'minimum': 0,
+                                    'maximum': 100,
+                                    'unit': 'percent'
+                                },
+                                self.api_handler.persistent_data['ringtone_volume'])
+
+
+                self.properties["led_color"] = CandlecamProperty(
+                                self,
+                                "led_color",
+                                {
+                                    '@type': 'ColorProperty',
+                                    'title': 'Color',
+                                    'type': 'string',
+                                    'description': 'The color of the built-in LED',
+                                },
+                                self.api_handler.persistent_data['led_color'])
+
+            
+                self.properties["led_brightness"] = CandlecamProperty(
+                                self,
+                                "led_brightness",
+                                {
+                                    '@type': 'LevelProperty',
+                                    'label': "LED brightness",
+                                    'type': 'integer',
+                                    'minimum': 0,
+                                    'maximum': 100,
+                                    'unit': 'percent'
+                                },
+                                self.api_handler.persistent_data['led_brightness'])
+            
+
+                """
+                if sys.platform != 'darwin':
+                    print("adding audio output property with list: " + str(audio_output_list))
+                    self.properties["audio output"] = CandlecamProperty(
+                                    self,
+                                    "audio output",
+                                    {
+                                        'label': "Audio output",
+                                        'type': 'string',
+                                        'enum': audio_output_list,
+                                    },
+                                    self.adapter.persistent_data['audio_output'])
+                """
             
         except Exception as ex:
             print("error adding properties: " + str(ex))
@@ -2708,7 +2756,11 @@ class CandlecamProperty(Property):
                 #self.update(bool(value))
 
             elif self.name == 'snapshot':
-                self.device.api_handler.take_a_photo = True
+                if self.device.api_handler.camera_available:
+                    self.device.api_handler.take_a_photo = True
+                else:
+                    self.device.api_handler.grab_snapshots() # grab snapshots from all servers in the network
+                    
                 self.update(True)
                 time.sleep(2)
                 self.update(False)
@@ -2845,9 +2897,9 @@ def arpa_detect_gateways(quick=True):
             print("arp -a line: " + str(line))
             if len(line) > 10:
                 
-                #if quick and "<incomplete>" in line:
-                #    print("skipping incomplete ip")
-                #    continue
+                if quick and "<incomplete>" in line:
+                    print("skipping incomplete ip")
+                    continue
                     
                 #print("--useable")
                 #name = "?"

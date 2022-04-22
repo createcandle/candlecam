@@ -289,13 +289,17 @@
                                 button_el.setAttribute("data-stream-url", stream_url );
                                 
                                 button_el.addEventListener('click', (event) => {
-            			            console.log('stream button clicked. Event: ', event.target);
+            			            //console.log('stream button clicked. Event: ', event.target);
                                     //event.stopImmediatePropagation();
                                     let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
                                     console.log("desired_stream_url: ", desired_stream_url);
                                     
                                     if( document.getElementById('extension-candlecam-picture').src != desired_stream_url){
+                                        console.log("- changing src");
                                         document.getElementById('extension-candlecam-picture').src = desired_stream_url;
+                                    }
+                                    else{
+                                        console.log("- that url was already the image source");
                                     }
                                     
                                     
