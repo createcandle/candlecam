@@ -523,7 +523,7 @@ class CandlecamAPIHandler(APIHandler):
             
             #self.dash_file_path = os.path.join(self.addon_path, 'stream', 'index.mpd')
 
-            self.matrix_drop_dir = os.path.join(self.user_profile['dataDir'], 'voco','sendme')
+            self.matrix_drop_dir = os.path.join(self.user_profile['addonsDir'], 'voco','sendme')
             
             self.not_streaming_image = os.path.join(self.addon_path, 'images','camera_not_available.jpg')
             
@@ -858,6 +858,9 @@ class CandlecamAPIHandler(APIHandler):
         #self.picam = picamera.PiCamera(resolution='720p', framerate=10)
         #self.picam.exposure_mode = 'auto'
         #self.picam.awb_mode = 'auto'
+        global streaming
+        global frame
+        frame = b''
         
         try:
             #self.picam.start_preview()
@@ -874,10 +877,13 @@ class CandlecamAPIHandler(APIHandler):
                 
                 # let camera warm up
                 time.sleep(2)
-
+                
+                streaming = True
+                
                 stream = io.BytesIO()
                 for _ in self.picam.capture_continuous(stream, 'jpeg', use_video_port=True):
-                    global frame
+                    
+                    
                     
                     # return current frame
                     stream.seek(0)
@@ -911,8 +917,11 @@ class CandlecamAPIHandler(APIHandler):
                                     drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + filename)
                                     os.system('cp ' + file_path + ' ' + drop_file_path)
                                 
-                    if self.persistent_data['streaming'] == False:
+                    if streaming == False or self.persistent_data['streaming'] == False:
+                        print("picamera: stopping streaming")
                         break
+            
+            print("picamera should now be stopped")
             
         except Exception as ex:
            print('ERROR. run_picamera: Error setting up recording: ' + str(ex))
@@ -1395,7 +1404,7 @@ class CandlecamAPIHandler(APIHandler):
             return
         
         global streaming
-        streaming = state
+        
         
         # START STREAMING
         if state:
@@ -1434,6 +1443,8 @@ class CandlecamAPIHandler(APIHandler):
             if self.DEBUG:
                 print("")
                 print("STREAMING OFF")
+            
+            streaming = state
             
             try:
                 if self.ffmpeg_process != None:
@@ -2167,7 +2178,7 @@ class CandlecamAPIHandler(APIHandler):
                             os.system('cp ' + file_path + ' ' + drop_file_path)
                         else:
                             if self.DEBUG:
-                                print("matrix drop-off dir doesn't exist, or the snapshot wasn't saved. self.matrix_drop_dir: " + str(self.matrix_drop_dir))
+                                print("matrix drop-off dir doesn't exist, or the snapshot wasn't saved")
                 
                     return True
         except Exception as ex:
@@ -2339,11 +2350,7 @@ class StreamyHandler(tornado.web.RequestHandler):
         not_streaming_image = b''
         not_streaming_image_size = os.path.getsize(not_streaming_image_path)
         with open(not_streaming_image_path, "rb") as file:
-            not_streaming_image = file
-        
-        
-        if viewers > 1:
-            streaming = False
+            not_streaming_image = file.read()
         
         #self.set_header('Cache-Control', 'no-cache, private')
         self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
@@ -2369,7 +2376,8 @@ class StreamyHandler(tornado.web.RequestHandler):
                     self.write(frame)
                     mjpg_interval = .1
                 else:
-                    self.write("Content-length: %s\r\n\r\n" % not_streaming_image_size)
+                    #self.write("Content-length: %s\r\n\r\n" % not_streaming_image_size)
+                    self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(not_streaming_image))
                     self.write(not_streaming_image)
                     mjpg_interval = 1
                 self.write('\r\n')
@@ -2444,6 +2452,7 @@ class SnapshotHandler(tornado.web.RequestHandler):
         print("in SnapshotHandler get")
     
         global frame
+        global streaming
         
         not_streaming_image_path = '/home/pi/.webthings/addons/candlecam/images/camera_not_available.jpg'
         
@@ -2468,12 +2477,15 @@ class SnapshotHandler(tornado.web.RequestHandler):
         #self.write("Content-type: image/jpeg\r\n")
         
         #self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(frame))
-        self.write(frame)
+        if streaming:
+            self.write(frame)
+        else:
+            self.write(not_streaming_image)
         #print(str(not_streaming_image))
         #print(str(frame))
         #self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(not_streaming_image_size))
         #self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(not_streaming_image))
-        #self.write(not_streaming_image)
+        #
         #self.write('\r\n')
         #self.set_header('Content-Type', 'multipart/x-mixed-replace;boundary=--jpgboundary')
         self.flush()

@@ -294,7 +294,10 @@
                                     let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
                                     console.log("desired_stream_url: ", desired_stream_url);
                                     
-                                    document.getElementById('extension-candlecam-picture').src = desired_stream_url;
+                                    if( document.getElementById('extension-candlecam-picture').src != desired_stream_url){
+                                        document.getElementById('extension-candlecam-picture').src = desired_stream_url;
+                                    }
+                                    
                                     
                                     document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", desired_stream_url );
                                     document.getElementById("extension-candlecam-content").classList.remove('extension-candlecam-show-overview');
