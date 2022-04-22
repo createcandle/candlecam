@@ -177,6 +177,7 @@ class CandlecamAPIHandler(APIHandler):
             self.encode_audio = False
             self.only_stream_on_button_press = False
             self.own_mjpeg_url = 'http://' + self.own_ip + ':8889/media/candlecam/stream/stream.mjpeg'
+            self.own_snapshot_url = 'http://' + self.own_ip + ':8889/snapshot.jpg'
             
             
             # CAMERA
@@ -210,7 +211,8 @@ class CandlecamAPIHandler(APIHandler):
             self.ramdrive_created = False # it's only created is enough free memory is available (50Mb)
 
             
-            
+            # Matrix
+            self.copy_saved_files_to_matrix = True
             
             #self.volume_level = 90
             
@@ -521,7 +523,7 @@ class CandlecamAPIHandler(APIHandler):
             
             #self.dash_file_path = os.path.join(self.addon_path, 'stream', 'index.mpd')
 
-            self.matrix_drop_dir = os.path.join(self.user_profile['addonsDir'], 'voco','sendme')
+            self.matrix_drop_dir = os.path.join(self.user_profile['dataDir'], 'voco','sendme')
             
             self.not_streaming_image = os.path.join(self.addon_path, 'images','camera_not_available.jpg')
             
@@ -686,6 +688,10 @@ class CandlecamAPIHandler(APIHandler):
         except:
             print("Error starting the clock thread")
         
+        
+        if os.path.isdir(self.matrix_drop_dir):
+            if self.DEBUG:
+                print("matrix drop-off dir exists")
         
         self.ready = True
         self.save_persistent_data()
@@ -886,7 +892,7 @@ class CandlecamAPIHandler(APIHandler):
                         self.take_a_photo = False
     
                         filename = str(int(time.time())) + '.jpg'
-                        file_path = os.path.join( self.api_handler.data_photos_dir_path,filename)
+                        file_path = os.path.join( self.data_photos_dir_path,filename)
                         # This stores a jpg as mjpeg on the SD card. Technically it could then be accessed via the Webthings standard.. if the remote location has a valid JWT. 
                         # TODO: could be a security feature in the future
                         if time.time() - 1 > self.last_write_time:
@@ -896,8 +902,15 @@ class CandlecamAPIHandler(APIHandler):
                             #with open(self.mjpeg_file_path, "wb") as binary_file: # if continous storage for mjpeg serving via webthings standard is required
                             with open(file_path, "wb") as binary_file:
                                 #print("saving jpg as mjpeg")
-                                binary_file.write(frame.getvalue())
-                    
+                                binary_file.write(frame)
+                                
+                            # We end up here if the "shortcut" option was used to quickly save a snapshot from the local camera
+                            if self.copy_saved_files_to_matrix:
+                                if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
+                                    print("sending file to Matrix via Voco")
+                                    drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + filename)
+                                    os.system('cp ' + file_path + ' ' + drop_file_path)
+                                
                     if self.persistent_data['streaming'] == False:
                         break
             
@@ -1235,7 +1248,7 @@ class CandlecamAPIHandler(APIHandler):
         
         #more_routes.append( (r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}) )
         more_routes.append( (r"/media/candlecam/stream/(.*)", StreamyHandler ) )
-        more_routes.append( (r"/snapshot", SnapshotHandler ) )
+        more_routes.append( (r"/snapshot.jpg", SnapshotHandler ) )
         more_routes.append( (r"/ping", PingHandler ) )
         #more_routes.append( (r'/mjpg', StreamyHandler) ) 
         
@@ -1737,7 +1750,7 @@ class CandlecamAPIHandler(APIHandler):
                                         if stream_url.endswith('mjpg') or stream_url.endswith('mjpeg'):
                                             
                                             if '/media/candlecam/stream/stream.mjpeg' in stream_url:
-                                                stream_url = stream_url.replace('/media/candlecam/stream/stream.mjpeg','/snapshot')
+                                                stream_url = stream_url.replace('/media/candlecam/stream/stream.mjpeg','/snapshot.jpg')
                                                 state = self.download_snapshot(stream_url)
                                             else:
                                                 state = self.grab_mjpeg_frame(stream_url)
@@ -1762,7 +1775,7 @@ class CandlecamAPIHandler(APIHandler):
                                   content=json.dumps({'state' : state, 'message': '','photos':photos_list}),
                                 )
                             
-                            
+                            """
                             elif action == 'download_snapshot':
                                 state = False
                                 photos_list = []
@@ -1792,7 +1805,7 @@ class CandlecamAPIHandler(APIHandler):
                                   content_type='application/json',
                                   content=json.dumps({'state' : state, 'message': '','photos':photos_list}),
                                 )
-                            
+                             """
                             
                         except Exception as ex:
                             if self.DEBUG:
@@ -2114,22 +2127,51 @@ class CandlecamAPIHandler(APIHandler):
         if self.DEBUG:
             print("in download_snapshot with snapshot_url: " + str(snapshot_url))
         try:
-            with requests.get(snapshot_url, stream=True) as r:
-                r.raise_for_status()
             
-                filename = str(int(time.time())) + '.jpg'
-                file_path = os.path.join( self.data_photos_dir_path,filename)
-            
-                with open(file_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192): 
-                        # If you have chunk encoded response uncomment if
-                        # and set chunk_size parameter to None.
-                        #if chunk: 
-                        f.write(chunk)
-                
+            if snapshot_url == self.own_snapshot_url:
+                if self.DEBUG:
+                    print("target snapshot url is own snapshot url. Taking shortcut.")
+                self.take_a_photo = True
                 return True
+            
+            else:
+            
+                with requests.get(snapshot_url) as response:
+                    #response.raise_for_status()
+            
+                    filename = str(int(time.time())) + '.jpg'
+                    file_path = os.path.join( self.data_photos_dir_path,filename)
+                    if self.DEBUG:
+                        print("downloading snapshot to: " + str(file_path))
+                    with open(file_path, 'wb') as f:
+                        #for chunk in r.iter_content(chunk_size=8192): 
+                            # If you have chunk encoded response uncomment if
+                            # and set chunk_size parameter to None.
+                            #if chunk: 
+                            #f.write(chunk)
+                        f.write(response.content)
+                
+                    if self.DEBUG:
+                        print("snapshot written to disk succesfully?: " + str(os.path.isfile(file_path)))
+                
+                    # Also send to Matrix
+                    if self.copy_saved_files_to_matrix:
+                        if self.DEBUG:
+                            print("- sending snapshot to Matrix is allowed")
+                        if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
+                            if self.DEBUG:
+                                print("- Voco's Matrix drop-off dir exists")
+                            drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + filename)
+                            if self.DEBUG:
+                                print("drop_file_path: " + str(drop_file_path))
+                            os.system('cp ' + file_path + ' ' + drop_file_path)
+                        else:
+                            if self.DEBUG:
+                                print("matrix drop-off dir doesn't exist, or the snapshot wasn't saved. self.matrix_drop_dir: " + str(self.matrix_drop_dir))
+                
+                    return True
         except Exception as ex:
-            print("Error in download_snashot: " + str(ex))
+            print("Error in download_snapshot: " + str(ex))
 
         return False
 
@@ -2170,8 +2212,6 @@ class CandlecamAPIHandler(APIHandler):
     
 
 
-
-    
 
 
 
@@ -2302,6 +2342,9 @@ class StreamyHandler(tornado.web.RequestHandler):
             not_streaming_image = file
         
         
+        if viewers > 1:
+            streaming = False
+        
         #self.set_header('Cache-Control', 'no-cache, private')
         self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
         self.set_header('Pragma', 'no-cache')
@@ -2385,7 +2428,7 @@ class PingHandler(tornado.web.RequestHandler):
         #self.set_header('Content-Type', 'multipart/x-mixed-replace;boundary=--jpgboundary')
         self.flush()
         #counter = 0
-        #yield tornado.gen.sleep(1)
+        yield tornado.gen.sleep(.1)
         
     def on_finish(self):
         print("pingy in on_finish")
@@ -2401,22 +2444,45 @@ class SnapshotHandler(tornado.web.RequestHandler):
         print("in SnapshotHandler get")
     
         global frame
+        
+        not_streaming_image_path = '/home/pi/.webthings/addons/candlecam/images/camera_not_available.jpg'
+        
+        not_streaming_image = b''
+        #not_streaming_image_size = os.path.getsize(not_streaming_image_path)
+        with open(not_streaming_image_path, "rb") as file:
+            not_streaming_image = file.read()
+                            
+        #print("not_streaming_image type: " + str(type(not_streaming_image)))
+        #print("not_streaming_image size: " + str(not_streaming_image_size))
+        #print("sys.getsizeof(not_streaming_image): " + str(sys.getsizeof(not_streaming_image)))
+        
         #self.set_header('Cache-Control', 'no-cache, private')
         self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
         self.set_header('Pragma', 'no-cache')
         #self.set_header('Connection', 'close')
-        self.set_header("Content-type",  "image/jpg")
-        self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(frame))
+        self.set_header("Content-type",  "image/jpeg")
+        #self.flush()
+        #print("sys.getsizeof(frame): " + str(sys.getsizeof(frame)))
+        
+        # self.write("Content-type: image/jpeg\r\n")
+        #self.write("Content-type: image/jpeg\r\n")
+        
+        #self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(frame))
         self.write(frame)
+        #print(str(not_streaming_image))
+        #print(str(frame))
+        #self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(not_streaming_image_size))
+        #self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(not_streaming_image))
+        #self.write(not_streaming_image)
+        #self.write('\r\n')
         #self.set_header('Content-Type', 'multipart/x-mixed-replace;boundary=--jpgboundary')
         self.flush()
         #counter = 0
-        #yield tornado.gen.sleep(1)
-        
+        yield tornado.gen.sleep(.1)
+    
     def on_finish(self):
         print("snapshot in on_finish")
         pass
-
 
 
 

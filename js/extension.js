@@ -796,9 +796,9 @@
         			//console.log(textnode);
                     
                     const raw_time_stamp = parseInt( file_list[key].replace(/\.[^/.]+$/, "") );
-                    console.log("raw_time_stamp: ", raw_time_stamp);
+                    //console.log("raw_time_stamp: ", raw_time_stamp);
                     const snapshot_date = new Date(raw_time_stamp * 1000);
-                    console.log("date: ", snapshot_date);
+                    //console.log("date: ", snapshot_date);
                     
                     var date_filename = "";
                     
@@ -814,7 +814,7 @@
                     date_filename += '<span class="extension-candlecam-snapshot-minutes">' + minutes+ '</span></span>';
                     
                     //const date_filename = snapshot_date.toString();
-                    console.log("date_filename: ", date_filename);
+                    //console.log("date_filename: ", date_filename);
                     
         			textnode.innerHTML = date_filename; //file_list[key];         // Create a text node
         			textnode.onclick = function() { 
