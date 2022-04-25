@@ -11,9 +11,9 @@
 			window.candlecam_filenames = [];
             this.saved_photos_list = []
 
-			this.interval = 30;
-			this.contain = true;
-			this.clock = false;
+			this.connection_check_interval = 5;
+            
+            this.image_load_error = false
             
             this.thing_settings = {
                 'camera_source_thing_id': '',
@@ -231,15 +231,57 @@
             //console.log(API);
             
             
+            
             var last_selected_stream = localStorage.getItem('candlecam_last_selected_stream');
             //console.log('background color from local storage: ', color);
-            if (last_selected_stream != '' && last_selected_stream != null) {
-                console.log('found last selected stream in local storage');
-                if( document.getElementById('extension-candlecam-picture') != null){
-                    console.log("- changing src");
-                    document.getElementById('extension-candlecam-picture').src = last_selected_stream;
+            
+            const candlecam_picture_el = document.getElementById('extension-candlecam-picture');
+            if(candlecam_picture_el != null){
+            
+                try{
+                    if (last_selected_stream != '' && last_selected_stream != null) {
+                        this.current_stream_url = last_selected_stream;
+                        console.log('found last selected stream in local storage');
+                        candlecam_picture_el.src = last_selected_stream;
+                        
+                    }
                 }
+                catch (e) {
+                    console.log("CAUGHT IT: ", e);
+                }
+                
+                
+                
+                candlecam_picture_el.addEventListener('error', (event) => {
+                    console.log("There was an error loading the image src: ", event);
+                    //candlecam_picture_el.src = "";
+                    this.image_load_error = true;
+                });
+                
+                candlecam_picture_el.addEventListener('load', (event) => {
+                    console.log("image src loaded succesfully");
+                    this.image_load_error = false;
+                });
+                
+                candlecam_picture_el.addEventListener('change', (event) => {
+                    console.log("image src changed");
+                });
+            
             }
+            
+            this.connection_check_interval = setInterval( () => {
+                const pic = document.getElementById('extension-candlecam-picture');
+                if(this.image_load_error){
+                    console.log("trying to fix image load error");
+                    if(pic != null){
+                        pic.src = this.current_stream_url;
+                    }
+                }
+                //else{
+                    //console.log("pic complete? ", pic.complete);
+                //}
+                
+            },5000);
             
             
             
@@ -256,7 +298,7 @@
                 //body_parsed = JSON.parse(body);
                 //console.log(body_parsed);
                 //this.thing_settings = JSON.parse(body['thing_settings']);
-                this.thing_settings = body['thing_settings'];
+                //this.thing_settings = body['thing_settings'];
                 
                 // Reveal settings button
                 if(document.getElementById('extension-candlecam-settings-button') != null){
@@ -309,7 +351,14 @@
                                     
                                     if( document.getElementById('extension-candlecam-picture').src != desired_stream_url){
                                         //console.log("- changing src");
-                                        document.getElementById('extension-candlecam-picture').src = desired_stream_url;
+                                        this.current_stream_url = desired_stream_url;
+                                        try{
+                                            document.getElementById('extension-candlecam-picture').src = desired_stream_url;
+                                        }
+                                        catch (e) {
+                                            console.log("CAUGHT IT AGAIN: ", e);
+                                        }
+                                        
                                     }
                                     else{
                                         console.log("- that url was already the image source");
@@ -327,13 +376,18 @@
                         
                     }
                     //console.log("final stream_urls: ", stream_urls);
-                
-                    if(stream_urls.length > 0){
-                        document.getElementById('extension-candlecam-picture').src = stream_urls[0];
-                        document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", stream_urls[0] );
-                        document.getElementById('extension-candlecam-save-picture-button').classList.remove('extension-candlecam-hidden');
-                        //this.grab_mjpeg_frame(stream_urls[0]);
+                    try{
+                        if(stream_urls.length > 0){
+                            document.getElementById('extension-candlecam-picture').src = stream_urls[0];
+                            document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", stream_urls[0] );
+                            document.getElementById('extension-candlecam-save-picture-button').classList.remove('extension-candlecam-hidden');
+                            //this.grab_mjpeg_frame(stream_urls[0]);
+                        }
                     }
+                    catch (e) {
+                        console.log("CAUGHT IT 3: ", e);
+                    }
+                    
                 }
                 
                 //this.get_things();
@@ -467,6 +521,10 @@
                     //console.log("save picture: desired_stream_url: ", desired_stream_url);
                 
                     document.getElementById("extension-candlecam-save-picture-button").classList.add('extension-candlecam-busy-saving-snapshot');
+                    setTimeout(function(){
+                        document.getElementById("extension-candlecam-save-picture-button").classList.remove('extension-candlecam-busy-saving-snapshot');
+                    }, 6000);
+                    
                     
         	        window.API.postJson(
         	          `/extensions/candlecam/api/ajax`,
@@ -480,11 +538,10 @@
                             this.saved_photos_list = body['photos'];
                             this.show_list(body['photos']);
                         }
-                        document.getElementById("extension-candlecam-save-picture-button").classList.remove('extension-candlecam-busy-saving-snapshot');
+                        
                     
         	        }).catch((e) => {
         	  			console.log("Candlecam: error doing grab_picture_from_stream request: ", e);
-                        document.getElementById("extension-candlecam-save-picture-button").classList.remove('extension-candlecam-busy-saving-snapshot');
         	        });
                 }
                 else{
@@ -604,24 +661,13 @@
         
     	hide(){
 		
-            /*
-    		try {
-    			window.clearInterval(this.photo_interval);
-    		}
-    		catch (e) {
-    			console.log("Could not clear photo rotation interval");
-    			console.log(e); //logMyErrors(e); // pass exception object to error handler
-    		}
-		
-    		try {
-    			window.clearInterval(this.wake_interval);
-    		}
-    		catch (e) {
-    			console.log("Could not clear keep awake interval");
-    			console.log(e); //logMyErrors(e); // pass exception object to error handler
-    		}
-            */
             
+    		try {
+    			window.clearInterval(this.connection_check_interval);
+    		}
+    		catch (e) {
+    			console.log("Could not clear interval: ", e);
+    		}
             this.view.innerHTML = "";
     	}
 
