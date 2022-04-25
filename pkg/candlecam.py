@@ -605,7 +605,6 @@ class CandlecamAPIHandler(APIHandler):
         #self.keyboard = Controller()
         
         
-        
         # Create ramdisk for dash files (to prevent wear on SD card)
         """
         self.use_ramdrive = False # TODO DEBUG TEMPORARY, REMOVE ME
@@ -2598,7 +2597,10 @@ class CandlecamDevice(Device):
         self.DEBUG = self.api_handler.DEBUG
 
         self.name = 'Candlecam_device'
-        self.title = 'Candle Camera'
+        if self.api_handler.camera_available:
+            self.title = 'Candle Camera'
+        else:
+            self.title = 'Candle Camera viewer'
         self.description = 'A privacy friendly smart doorbell or security camera'
         self._type = ['OnOffSwitch']
         #self.connected = False

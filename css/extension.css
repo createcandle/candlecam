@@ -95,6 +95,7 @@
 }
 #extension-candlecam-photos-list:not(:empty){
     padding-top:2rem;
+    padding-left:0;
 }
 
 
@@ -471,6 +472,15 @@ LIST
 }
 
 
+
+
+@media screen and (max-width: 800px) {
+
+    #extension-candlecam-photos-list:not(:empty){
+        margin-top:0;
+    }
+
+}
 
 
 @media screen and (min-width: 801px) {
