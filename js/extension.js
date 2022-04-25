@@ -229,7 +229,20 @@
     		var this_object = this;
 		
             //console.log(API);
-        
+            
+            
+            var last_selected_stream = localStorage.getItem('candlecam_last_selected_stream');
+            //console.log('background color from local storage: ', color);
+            if (last_selected_stream != '' && last_selected_stream != null) {
+                console.log('found last selected stream in local storage');
+                if( document.getElementById('extension-candlecam-picture') != null){
+                    console.log("- changing src");
+                    document.getElementById('extension-candlecam-picture').src = last_selected_stream;
+                }
+            }
+            
+            
+            
             console.log("Candlecam: requesting /INIT");
         
             window.API.postJson(
@@ -301,7 +314,7 @@
                                     else{
                                         console.log("- that url was already the image source");
                                     }
-                                    
+                                    localStorage.setItem('candlecam_last_selected_stream', desired_stream_url);
                                     
                                     document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", desired_stream_url );
                                     document.getElementById("extension-candlecam-content").classList.remove('extension-candlecam-show-overview');
