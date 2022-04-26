@@ -27,12 +27,43 @@
   "name": "Candle cam",
   "options": {
     "default": {
+	  "Portrait mode": false,
+	  "High resolution": false,
+      "Data retention days": 2,
+	  "Send snapshots to printer": false,
       "Debug": false
     },
     "schema": {
       "properties": {
+        "Portrait mode": {
+          "description": "Enable this is you would like the camera to record in portrait mode instead of landscape.",
+          "type": "boolean"
+        },
+        "High resolution": {
+          "description": "Normally the camera streams at 640x480 pixels to enable streaming to multiple devices at once. If you enable high resolution mode the stream will be 720p (1280x720 pixels), but at the cost of only live streaming to one device at a time. You can still take snapshots from multiple devices, only the live stream is affected.",
+          "type": "boolean"
+        },
+        "Data retention days": {
+          "description": "For how many days should snapshots be stored? The default is 2 days. Set to 0 to disable taking snapshots.",
+          "enum": [
+			"0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "7",
+            "10",
+            "14"
+          ],
+          "type": "string"
+        },
+        "Send snapshots to printer": {
+          "description": "If enabled, and if a (Bluetooth) printer is connected, then newly saved snapshots will also be sent to the printer. Please discuss enabling this feature with people who frequent your home.",
+          "type": "boolean"
+        },
         "Debug": {
-          "description": "Enable this to see much more detail in the internal log about what this add-on is doing.",
+          "description": "Enable this to see much more detail in the internal log about what this add-on is doing. Useful during development or figuring out why something is not working.",
           "type": "boolean"
         }
       },
@@ -40,7 +71,7 @@
     }
   },
   "short_name": "candlecam",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "web_accessible_resources": [
     "css/*.css",
     "images/*.svg",

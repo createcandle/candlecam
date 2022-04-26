@@ -13,12 +13,26 @@
 }
 
 
+#extension-candlecam-no-cameras-detected{
+    margin: 10rem auto;
+    max-width:40rem;
+}
+
+#extension-candlecam-webthing-tip{
+    position: fixed;
+    bottom: 0;
+    padding: 0 2rem;
+    background-color: rgba(0,0,0,.1);
+}
+
+
 #extension-candlecam-loading{
-    width:100%;
-    height:calc(100% - 10rem);
+    width:100vw;
+    height:calc(100vh - 10rem);
     display:flex;
     justify-content:center;
     align-items:center;
+    position:fixed;
 }
 
 
@@ -27,13 +41,22 @@
     display:none;
 }
 
+#extension-candlecam-stream-error-container{
+    display:none;
+    padding:15rem 2rem 0 2rem;
+}
+
+.extension-candlecam-stream-error #extension-candlecam-stream-error-container,
 .extension-candlecam-show-overview #extension-candlecam-overview{
     display:block;
 }
 
+.extension-candlecam-stream-error #extension-candlecam-picture-holder,
 .extension-candlecam-show-overview #extension-candlecam-picture-holder{
     display:none;
 }
+
+
 
 
 #extension-candlecam-picture-holder{
@@ -62,9 +85,34 @@
     width:100%;
 }
 
-.extension-candlecam-busy-saving-snapshot{
-    opacity:.1;
+.extension-candlecam-busy-saving-snapshot #extension-candlecam-save-picture-button{
+    display:none;
 }
+
+.extension-candlecam-busy-saving-snapshot  #extension-candlecam-loading{
+    display:flex!important;
+}
+
+#extension-candlecam-preview{
+    width:100%;
+    height:auto;
+    text-align:right;
+    position:fixed;
+    bottom:2rem;
+    right:2rem;
+    opacity:1;
+    transition:opacity 4s
+}
+#extension-candlecam-preview.extension-candlecam-transparent{
+    opacity:0;
+}
+
+
+#extension-candlecam-preview > img{
+    width:250px;
+    max-width:50%;
+}
+
 
 
 #extension-candlecam-picture-exit{
@@ -100,8 +148,8 @@
 
 
 .extension-candlecam-list-thumbnail-container{
-	width:15rem;
-	height:15rem;
+	width:14rem;
+	height:14rem;
 	display:flex;
 	align-items: center;
 	justify-content: center;
@@ -135,6 +183,32 @@
 }
 
 
+.extension-candlecam-thumbnail-delete-button{
+    position: absolute;
+    top: -0.8rem;
+    right: -0.8rem;
+    background: url(/images/delete-button.png);
+    background-size: 3.6rem;
+    width: 3.6rem;
+    height: 3.6rem;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    border: 1px solid #979797;
+    box-shadow: 0 3px 6px rgb(0 0 0 / 16%), 0 3px 6px rgb(0 0 0 / 23%);
+    cursor: pointer;
+    z-index: 99;
+    opacity: .6;
+    cursor:pointer;
+}
+.extension-candlecam-thumbnail-delete-button:hover{
+    opacity:1;
+}
+
+
+
+
+
 
 #extension-candlecam-icon{
   display: inline-block;
@@ -151,10 +225,15 @@
 	background-image: url('../images/menu-icon-open.svg');
 }
 
-
+.extension-candlecam-hidden,
 #extension-candlecam-view .extension-candlecam-hidden{
 	display:none;
 }
+
+.extension-candlecam-transparent{
+    opacity:0;
+}
+
 
 #extension-candlecam-content-container h3{
 	margin-top:3rem;
@@ -166,13 +245,12 @@
   pointer-events: all;
 }
 
-.extension-candlecam-hidden{
-	display:none;
-}
+
 
 #extension-candlecam-view li{
 	padding:1rem;
 	margin-bottom:1rem;
+    position:relative;
 }
 
 #main-menu #extension-candlecam-menu-item {
@@ -237,7 +315,7 @@ LIST
 
 
 .extension-candlecam-list-item{
-	width:15rem;
+	width:14rem;
 	display:inline-block;
 	padding:.2rem;
     margin:1rem;
@@ -247,8 +325,9 @@ LIST
 	word-wrap: break-word;
 }
 
+
+/*
 .extension-candlecam-deletable_item{
-	/*background-color:rgba(255,255,255,.1);*/
 	border-radius:.5rem;
 	display:block;
 	cursor: pointer;
@@ -279,11 +358,12 @@ LIST
 	left:.2rem;
 }
 
+
 .extension-candlecam-deletable_item:hover::before{
 	color:red;
 	background-color:	white;
 }
-
+*/
 
 #extension-candlecam-picture-exit-container{
 	text-align:center;
@@ -525,5 +605,9 @@ LIST
 	#extension-candlecam-response{
 		width: calc(100% - 22rem);
 	}
-	
+    
+    #extension-candlecam-preview > img{
+        max-width:25%;
+    }
+    
 }

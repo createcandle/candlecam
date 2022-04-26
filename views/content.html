@@ -6,9 +6,30 @@
                poster="/media/candlecam/stream/latest.jpg"
                controls autoplay></video>-->
         
+        <div id="extension-candlecam-no-cameras-detected" class="extension-candlecam-hidden">
+            <h3 style="text-align:center">No Candle Cameras detected</h3>
+            <p style="text-align:center">A scan of your local network did not reveal any Candle Cameras (yet). Try again in a minute or two.</p>
+            <button onClick="window.location.reload();" class="text-button">Scan again</button>
+        </div>
+        
+        <div id="extension-candlecam-webthing-tip" class="extension-candlecam-hidden">
+            <p>Tip: install the "Web Thing" addon from the Candle store on the controller that you want to use as the central hub. It will allow you to control all cameras from one central controller.</p>
+        </div>
+        
+        <div id="extension-candlecam-stream-error-container">
+            <div class="extension-candlecam-spinner">
+                <div></div><div></div><div></div><div></div>
+            </div>
+            <p style="text-align:center">The stream could not be loaded yet. Will attempt again every 5 seconds.</p>
+        </div>
+        
         <div id="extension-candlecam-picture-holder">
             <img id="extension-candlecam-picture" src="" alt="Live stream">
-           
+            
+            <div id="extension-candlecam-preview" class="extension-candlecam-transparent">
+                <img id="extension-candlecam-preview-img" alt="Latest snapshot"/>
+            </div>
+            
             <div id="extension-candlecam-main-buttons-container">
                 <button id="extension-candlecam-save-picture-button" class="icon-button extension-candlecam-hidden" aria-label="Save picture"></button>
                 <div id="extension-candlecam-main-door-buttons-container" class="extension-candlecam-hidden">
@@ -53,6 +74,7 @@
             <h3 style="text-align:center">Snapshots</h3>
             <div id="extension-candlecam-snapshot-holder"><img id="extension-candlecam-snapshot" src="" alt="snapshot"/></div>
             <ul id="extension-candlecam-photos-list"></ul>
+            <button id="extension-candlecam-photos-list-delete-all-button" class="text-button">Delete all</button>
         </div>
                
         <div id="extension-candlecam-clock-container"><div id="extension-candlecam-clock"></div></div>

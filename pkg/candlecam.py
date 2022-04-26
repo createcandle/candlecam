@@ -49,15 +49,14 @@ from requests.adapters import HTTPAdapter
 
 import tornado.web
 import tornado.gen
+#from tornado.util import TimeoutError
 
 import picamera
 
 try:
     from gpiozero import Button
 except:
-    print("Could not load gpiozero library")
-
-import tracemalloc # memory use analysis
+    print("Error, could not load gpiozero library")
 
 
 if os.path.isdir("/etc/voicecard"):
@@ -65,20 +64,20 @@ if os.path.isdir("/etc/voicecard"):
     try:
         import RPi.GPIO as GPIO
     except Exception as ex:
-        print("Could not load RPi.GPIO: " + str(ex))
+        print("Error, could not load RPi.GPIO: " + str(ex))
 
     try:
         #from apa102 import APA102
         from .apa102 import APA102
         #from .apa import APA102
     except:
-        print("Could not load APA201 LED lights library")
+        print("Error, could not load APA201 LED lights library")
 
 
 try:
     from gateway_addon import Database, Adapter, Device, Property, APIHandler, APIResponse
 except:
-    print("Could not load gateway addon library")
+    print("Error, could not load gateway addon library")
     
     
 try:
@@ -93,8 +92,6 @@ except Exception as ex:
 #    print("Gateway not loaded?!")
 
 print = functools.partial(print, flush=True)
-
-tracemalloc.start()
 
 _TIMEOUT = 3
 
@@ -137,18 +134,20 @@ class CandlecamAPIHandler(APIHandler):
 
             with open(manifest_fname, 'rt') as f:
                 manifest = json.load(f)
-
-
             
             APIHandler.__init__(self, manifest['id'])
             self.manager_proxy.add_api_handler(self)            
             
-            global frame
-            frame = b''
-            global viewers
-            viewers = 0
-            global streaming
-            streaming = True
+        except Exception as ex:
+            print("Failed creating handler for proxy: " + str(ex))
+            
+        try:
+            #global frame
+            #frame = b''
+            #global viewers
+            #viewers = 0
+            #global streaming
+            #streaming = True
             
             global taking_a_photo_countdown
             taking_a_photo_countdown = 0
@@ -181,6 +180,8 @@ class CandlecamAPIHandler(APIHandler):
             
             
             # STREAMING
+            self.frame = b''
+            self.viewer_count = 0
             self.ffmpeg_process = None
             self.encode_audio = False
             self.only_stream_on_button_press = False
@@ -188,10 +189,18 @@ class CandlecamAPIHandler(APIHandler):
             self.own_snapshot_url = 'http://' + self.own_ip + ':8889/snapshot.jpg'
             
             
+            
             # CAMERA
             self.picam = None
             self.framerate = 10
             self.last_write_time = 0
+            self.portrait_mode = False
+            self.hires = False
+            self.maximum_connections = 2
+            
+            # PRINT
+            self.send_snapshots_to_printer = False
+            self.photo_printer_available = False
             
             
             # WEBTHING THINGY & SERVER
@@ -210,6 +219,7 @@ class CandlecamAPIHandler(APIHandler):
             self.pressed_sent = False
             self.pressed_countdown_time = 60 #1200 # 1200 = 2 minutes
             self.pressed_countdown = self.pressed_countdown_time
+            self.webthings_addon_detected = False
             
             
             #GPIO
@@ -503,7 +513,7 @@ class CandlecamAPIHandler(APIHandler):
     
     
     
-            streaming = self.persistent_data['streaming'] # global
+            #streaming = self.persistent_data['streaming'] # global
             self.thingy_id = 'candlecam_webthing_' + self.persistent_data['thing_server_id']
     
             #self.streaming = self.persistent_data['streaming']
@@ -570,11 +580,15 @@ class CandlecamAPIHandler(APIHandler):
 
             self.matrix_drop_dir = os.path.join(self.user_profile['addonsDir'], 'voco','sendme')
             
+            self.webthings_addon_dir = os.path.join(self.user_profile['addonsDir'], 'thing-url-adapter')
+            
             self.not_streaming_image = os.path.join(self.addon_path, 'images','camera_not_available.jpg')
             
             self.addon_sounds_dir_path = os.path.join(self.addon_path, 'sounds')
             
             self.addon_sounds_dir_path += os.sep
+            
+            self.external_picture_drop_dir = os.path.join(self.user_profile['dataDir'], 'privacy-manager', 'printme')
             
             if self.DEBUG:
                 print("self.latest_photo_file_path = " + str(self.latest_photo_file_path))
@@ -642,10 +656,18 @@ class CandlecamAPIHandler(APIHandler):
             os.system(soft_link)
                 
                 
-        except:
+        except Exception as ex:
             if self.DEBUG:
-                print("self.gateway_version did not exist")
+                print("Error prepating photos dir: " + str(ex))
             
+        try:
+            if os.path.isdir(self.webthings_addon_dir):
+                self.webthings_addon_detected = True
+            
+            
+        except Exception as ex:
+            if self.DEBUG:
+                print("Error checking for thing url adapter dir: " + str(ex))
         #self.keyboard = Controller()
         
         
@@ -703,7 +725,7 @@ class CandlecamAPIHandler(APIHandler):
         
         
         # start libcamera streaming if on Raspbian Bullseye
- 
+        """
         self.libcamera_available = False
         cameralib_check = run_command('which libcamera-vid')
         if self.DEBUG:
@@ -720,7 +742,7 @@ class CandlecamAPIHandler(APIHandler):
                 if self.DEBUG:
                     print("libcamera-jpeg result: " + str(snapshot_result))
                 time.sleep(3)
-            
+        """
  
         
         #print("init: Starting the ffmpeg thread")
@@ -765,44 +787,50 @@ class CandlecamAPIHandler(APIHandler):
         self.save_persistent_data()
         #time.sleep(10)
         #self.create_thingy()
+        
         try:
             if self.has_respeaker_hat or self.camera_available:
-            
-                if self.encode_audio:
+                
+                
+                
+                if self.camera_available:
                     if self.DEBUG:
-                        print("encode_audio was true, calling ffmpeg()")
-                    self.ffmpeg()
-                    if self.DEBUG:
-                        print("past self.ffmpeg in streaming_change STREAMING ON")
-            
-                else:
-                    try:
-                        if self.DEBUG:
-                            print("starting the PiCamera thread (run_picamera)")
-                        self.ct = threading.Thread(target=self.run_picamera)
-                        self.ct.daemon = True
-                        self.ct.start()
+                        print("init: starting the picam thread")
+                    #self.not_streaming_image
+                    #not_streaming_image_size = os.path.getsize(self.not_streaming_image)
+                    with open(self.not_streaming_image, "rb") as file:
+                        self.not_streaming_image = file.read()
                     
-                        #old
-                        #self.ct = threading.Thread(target=self.run_picamera) #, args=(self.voice_messages_queue,))
-                        #self.ct = threading.Thread(target=self.ffmpeg_mjpeg) #, args=(self.voice_messages_queue,))
-                        #self.ffmpeg()
-                        #self.ffmpeg_mjpeg()
+                    try:            
+                        c = threading.Thread(target=self.run_picam)
+                        c.daemon = True
+                        c.start()
+                        pass
+                    except Exception as ex:
+                        print("Error starting the clock thread: " + str(ex))
                     
-                    except:
-                        print("Error starting the picamera thread")
-                        
+                    #if self.persistent_data['streaming']:
+                    #    self.run_picam()
+                    #else:
+                    #    print("init: not streaming, not starting picam yet")
+                #self.picam = picamera.PiCamera(resolution=(640,480), framerate=15)
+                #self.picam.exposure_mode = 'auto'
+                #self.picam.awb_mode = 'auto'
+                    # let camera warm up
+                #    time.sleep(2)
+                    
                 if self.DEBUG:
                     print("init: starting the thingy thread")
                 self.t = threading.Thread(target=self.create_thingy) #, args=(self.voice_messages_queue,))
                 self.t.daemon = True
                 self.t.start()
-                #pass
+                
+                
             else:
                 if self.DEBUG:
-                    print("init: NOT starting the stream thread (no camera and no respeaker hat)")
-        except:
-            print("Error starting the thingy thread")
+                    print("init: NOT starting the thingy and picamera (no camera and no respeaker hat)")
+        except Exception as ex:
+            print("Error starting the thingy thread: " + str(ex))
         
         #self.create_thingy()
         
@@ -819,23 +847,103 @@ class CandlecamAPIHandler(APIHandler):
             print("end of init")
         
         
+    def run_picam(self):
+        if self.DEBUG:
+            print("in run_picam")
+            
+            
+        
+        while self.running:
+            
+            time.sleep(.1)
+            
+            if self.picam == None and self.persistent_data['streaming']:
+                stream = io.BytesIO()
+        
+                resolution = (640,480)
+                if self.hires:
+                    resolution = (1280,720)
+                if self.portrait_mode:
+                    if self.hires:
+                        resolution = (720,1280)
+                    else:
+                        resolution = (480,640)
+        
+                print("- resolution: " + str(resolution))
+        
+                with picamera.PiCamera(resolution=resolution, framerate=10) as self.picam:
+                    self.picam.exposure_mode = 'auto'
+                    self.picam.awb_mode = 'auto'
+        
+                    time.sleep(2)
+            
+                    for _ in self.picam.capture_continuous(stream, 'jpeg', use_video_port=True):
+                        # return current frame
+                
+                        if self.persistent_data['streaming'] == False:
+                            if self.DEBUG:
+                                print("exiting picam loop")
+                            break
+                
+                        else:
+                            stream.seek(0)
+                            self.frame = stream.read()
+                    
+                            if self.take_a_photo: # TODO: or if continous periodic recording should be active, perhaps while in security mode?
+                                if self.DEBUG:
+                                    print("\nself.take_a_photo was True.")
+                                self.take_a_photo = False
+
+                                filename = str(int(time.time())) + '.jpg'
+                                file_path = os.path.join( self.data_photos_dir_path,filename)
+                        
+                                if time.time() - 1 > self.last_write_time: # rate limiter
+                                    if self.DEBUG:
+                                        print("- Saving a photo from the picamera stream")
+                                    self.last_write_time = time.time()
+                                    #with open(self.mjpeg_file_path, "wb") as binary_file: # if continous storage for mjpeg serving via webthings standard is required
+                                    with open(file_path, "wb") as binary_file:
+                                        #print("saving jpg as mjpeg")
+                                        binary_file.write(self.frame)
+                            
+                                    # We end up here if the "shortcut" option was used to quickly save a snapshot from the local camera
+                                    if self.copy_saved_files_to_matrix:
+                                        if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
+                                            if self.DEBUG:
+                                                print("sending file to Matrix via Voco")
+                                            drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + socket.gethostname().lower() + '_' + filename)
+                                            os.system('cp ' + file_path + ' ' + drop_file_path)
+                    
+                                    self.try_sending_to_printer(filename)
+                    
+                    
+                        # reset stream for next frame
+                        stream.seek(0)
+                        stream.truncate()
+                
+                self.picam = None
+                stream.close()
+                if self.DEBUG:
+                    print("picam is now stopped")
+            
+            #print("[z]")
+            
+            
+        
         
     
 #
 #  CLOCK
 #
-
+    
+    """
     def main_clock(self):
-        """ Runs every second and handles the various timers """
         
         if self.DEBUG:
             print("CLOCK INIT.. ")
             print("clock: self.persistent_data['data_retention_days']: " + str(self.persistent_data['data_retention_days']))
         #time.sleep(2)
         
-        
-        
-            
 
         while self.running:
             try:
@@ -873,7 +981,7 @@ class CandlecamAPIHandler(APIHandler):
     
         
     
-        
+    
     def ffmpeg(self):
         if self.DEBUG:
             print("in ffmpeg")
@@ -927,7 +1035,7 @@ class CandlecamAPIHandler(APIHandler):
         
         # -init_seg_name init-cam1-$RepresentationID$.mp4 -media_seg_name cam1-$RepresentationID$-$Number$.mp4
         
-        
+    
     def ffmpeg_mjpeg(self):
         if self.DEBUG:
             print("in ffmpeg_mjpeg")
@@ -985,7 +1093,7 @@ class CandlecamAPIHandler(APIHandler):
         
         
         
-        
+    
     def kill_ffmpeg(self):
         try:
             ffmpeg_check_command = 'ps -aux | grep media/candlecam/stream/index.mpd | grep -v "grep"'
@@ -1003,7 +1111,7 @@ class CandlecamAPIHandler(APIHandler):
         
         except Exception as ex:
             print("Error trying to find and stop running ffmpeg: " + str(ex))
-    
+    """
         
         
     def run_picamera(self):   
@@ -1026,60 +1134,66 @@ class CandlecamAPIHandler(APIHandler):
             #    print("run_picamera: start stream capture")
             #self.picam.start_recording(self.output, format='mjpeg')
             
-            with picamera.PiCamera(resolution='720p', framerate=10) as self.picam:
-                self.picam.exposure_mode = 'auto'
-                self.picam.awb_mode = 'auto'
+            self.picam = picamera.PiCamera(resolution=(640,480), framerate=15)
+            self.picam.exposure_mode = 'auto'
+            self.picam.awb_mode = 'auto'
+            
+            #with picamera.PiCamera(resolution='720p', framerate=10) as self.picam:
+            #    self.picam.exposure_mode = 'auto'
+            #    self.picam.awb_mode = 'auto'
                 
                 # let camera warm up
-                time.sleep(2)
+            #    time.sleep(2)
                 
-                #streaming = True
+            #streaming = True
+            """
+            stream = io.BytesIO()
+            for _ in self.picam.capture_continuous(stream, 'jpeg', use_video_port=True):
                 
-                stream = io.BytesIO()
-                for _ in self.picam.capture_continuous(stream, 'jpeg', use_video_port=True):
-                    
-                    
-                    
-                    # return current frame
-                    stream.seek(0)
-                    frame = stream.read()
-                    
-                    # reset stream for next frame
-                    stream.seek(0)
-                    stream.truncate()
-                    
-                    if self.take_a_photo: # TODO: or if continous periodic recording should be active, perhaps while in security mode?
+                
+                
+                # return current frame
+                stream.seek(0)
+                frame = stream.read()
+                
+                # reset stream for next frame
+                stream.seek(0)
+                stream.truncate()
+                
+                if self.take_a_photo: # TODO: or if continous periodic recording should be active, perhaps while in security mode?
+                    if self.DEBUG:
+                        print("\nself.take_a_photo was True.")
+                    self.take_a_photo = False
+
+                    filename = str(int(time.time())) + '.jpg'
+                    file_path = os.path.join( self.data_photos_dir_path,filename)
+                    # This stores a jpg as mjpeg on the SD card. Technically it could then be accessed via the Webthings standard.. if the remote location has a valid JWT. 
+                    # TODO: could be a security feature in the future
+                    if time.time() - 1 > self.last_write_time:
+                        #if self.DEBUG:
                         if self.DEBUG:
-                            print("\nself.take_a_photo was True.")
-                        self.take_a_photo = False
-    
-                        filename = str(int(time.time())) + '.jpg'
-                        file_path = os.path.join( self.data_photos_dir_path,filename)
-                        # This stores a jpg as mjpeg on the SD card. Technically it could then be accessed via the Webthings standard.. if the remote location has a valid JWT. 
-                        # TODO: could be a security feature in the future
-                        if time.time() - 1 > self.last_write_time:
-                            #if self.DEBUG:
-                            if self.DEBUG:
-                                print("- Saving a photo from the picamera stream")
-                            self.last_write_time = time.time()
-                            #with open(self.mjpeg_file_path, "wb") as binary_file: # if continous storage for mjpeg serving via webthings standard is required
-                            with open(file_path, "wb") as binary_file:
-                                #print("saving jpg as mjpeg")
-                                binary_file.write(frame)
-                                
-                            # We end up here if the "shortcut" option was used to quickly save a snapshot from the local camera
-                            if self.copy_saved_files_to_matrix:
-                                if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
-                                    if self.DEBUG:
-                                        print("sending file to Matrix via Voco")
-                                    drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + socket.gethostname().lower() + '_' + filename)
-                                    os.system('cp ' + file_path + ' ' + drop_file_path)
-                                
-                    #if streaming == False or self.persistent_data['streaming'] == False:
-                    #    print("picamera: stopping streaming")
-                    #    break
-                    stream.truncate()
-            print("picamera should now be stopped")
+                            print("- Saving a photo from the picamera stream")
+                        self.last_write_time = time.time()
+                        #with open(self.mjpeg_file_path, "wb") as binary_file: # if continous storage for mjpeg serving via webthings standard is required
+                        with open(file_path, "wb") as binary_file:
+                            #print("saving jpg as mjpeg")
+                            binary_file.write(frame)
+                            
+                        # We end up here if the "shortcut" option was used to quickly save a snapshot from the local camera
+                        if self.copy_saved_files_to_matrix:
+                            if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
+                                if self.DEBUG:
+                                    print("sending file to Matrix via Voco")
+                                drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + socket.gethostname().lower() + '_' + filename)
+                                os.system('cp ' + file_path + ' ' + drop_file_path)
+                            
+                #if streaming == False or self.persistent_data['streaming'] == False:
+                #    print("picamera: stopping streaming")
+                #    break
+                stream.truncate()
+            
+            """
+            print("picamera should now be up")
             
         except Exception as ex:
            print('ERROR. run_picamera: Error setting up recording: ' + str(ex))
@@ -1097,6 +1211,8 @@ class CandlecamAPIHandler(APIHandler):
         
         
     # Not useful on Raspian Bullseye yet, as libcamera has no python support yet...
+    
+    """
     def run_picamera_libcamera(self):
         if self.DEBUG:
             print("in run_picamera. Should probably create mjpeg stream now.")
@@ -1107,33 +1223,1160 @@ class CandlecamAPIHandler(APIHandler):
             if self.DEBUG:
                 print("Starting MJPEG stream with command: " + str(mjpeg_stream_command))
             run_command(mjpeg_stream_command, None)
+    """
         
-        """
-        self.picam = picamera.PiCamera(resolution='720p', framerate=10)
-        self.picam.exposure_mode = 'auto'
-        self.picam.awb_mode = 'auto'
         
+    
+
+
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+                    
+                    
+                    
+    def move_cover(self,state,save=True):
+        if self.has_respeaker_hat and self.camera_available:
+            
+            if state == 'closed':
+                #self.set_led(self.persistent_data['led_color'],self.persistent_data['led_brightness'],False)
+                try:
+                    if self.DEBUG:
+                        print("closing cover?: " + str(self.servo_closed_position))
+                    self.pwm.ChangeDutyCycle(70)
+                    if self.DEBUG:
+                        print("set servo to closed (1)")
+                except Exception as ex:
+                    if self.DEBUG:
+                        print("could not set servo: " + str(ex))
+                    
+            elif state == 'open':
+                #self.set_led('#ff0000',30,False) # set LED to full brightness.
+                try:
+                    if self.DEBUG:
+                        print("opening cover?: " + str(self.servo_open_position))
+                    self.pwm.ChangeDutyCycle(1)
+                    if self.DEBUG:
+                        print("set servo to open (70)")
+                except Exception as ex:
+                    if self.DEBUG:
+                        print("could not set servo: " + str(ex))
+    
+            elif state == 'maintenance':
+                try:
+                    self.pwm.ChangeDutyCycle(100)
+                    if self.DEBUG:
+                        print("set servo to maintenance (100)")
+                except Exception as ex:
+                    if self.DEBUG:
+                        print("could not set servo: " + str(ex))
+        
+        else:
+            if self.DEBUG:
+                print("no hat and/or no camera, so no need to move the servo")
+        #if self.politeness:
+        #    state = 'closed'
+        if save:
+            self.persistent_data['cover_state'] = state
+            self.save_persistent_data()
+
+
+
+    def politeness_change(self,politeness_state):
+        if self.DEBUG:
+            print("in politeness, state changes to: " + str(politeness_state))
+        self.persistent_data['politeness'] = politeness_state
+        self.save_persistent_data()
+        
+        if self.pressed_countdown == 0:
+            self.move_cover('closed')
+            self.streaming_change(False)
+
         try:
-            self.picam.start_preview()
-            # Give the camera some warm-up time
-            time.sleep(2)
-            output = StreamOutput()
-            self.picam.start_recording(output, format='mjpeg')
-        except:
-           print('Error setting up recording!')
-        
-        try:
-            while self.persistent_data['streaming']:
-                self.picam.wait_recording(2)
+            self.adapter.candlecam_device.properties["politeness"].update(politeness_state)
         except Exception as ex:
-            print("Error while getting image data from camera module: " + str(ex))
-        self.picam.stop_recording()
-        output.close()
-        print("at end of picamera thread. Does it close now?")
-        #self.join()
+            print("Error setting politeness_state on thing: " + str(ex))
+
+        
+
+    def volume_change(self,ringtone_volume):
+        if self.DEBUG:
+            print("new ringtone_volume: " + str(ringtone_volume))
+        self.persistent_data['ringtone_volume'] = ringtone_volume
+        self.save_persistent_data()            
+
+        try:
+            self.adapter.candlecam_device.properties["ringtone_volume"].update(ringtone_volume)
+        except Exception as ex:
+            print("Error setting ringtone volume on thing: " + str(ex))
+        
+        
+
+    def streaming_change(self,state):
+        if self.DEBUG:
+            print("in streaming_changereally. new streaming state: " + str(state))
+            #print("self.encode_audio: " + str(self.encode_audio))
+        
+        if self.camera_available == False:
+            print("no camera available")
+            return
+        
+        global streaming
+        streaming = state
+        #self.streaming = state
+        self.persistent_data['streaming'] = state
+    
+        if state:
+            pass
+            #self.snapshot1 = tracemalloc.take_snapshot()
+        else:
+            
+            """
+            self.snapshot2 = tracemalloc.take_snapshot()
+            if self.snapshot1 != None:
+                top_stats = self.snapshot2.compare_to(self.snapshot1, 'lineno')
+                print("[ Top 10 differences ]")
+                for stat in top_stats[:10]:
+                    print(stat)
+            """
+        
+            collected = gc.collect()
+ 
+            # Prints Garbage collector
+            # as 0 object
+            print("Garbage collector: collected",
+                      "%d objects." % collected)
+        
+        
+        # START STREAMING
+        if state:
+            if self.DEBUG:
+                print("")
+                print("STREAMING ON")
+            
+            self.set_led('#ff0000',self.persistent_data['led_brightness'],False)
+            
+            self.move_cover('open')
+            
+        # STOP STREAMING
+        else:
+            if self.DEBUG:
+                print("")
+                print("STREAMING OFF")
+            
+            
+            
+            """
+            try:
+                if self.ffmpeg_process != None:
+                    self.ffmpeg_process.terminate()
+                    if self.DEBUG:
+                        print("ffmpeg process terminated command sent")
+                    self.ffmpeg_process.kill()
+                    if self.DEBUG:
+                        print("ffmpeg process kill command sent")
+                    self.ffmpeg_process.wait()
+                    if self.DEBUG:
+                        print("ffmpeg process terminated?")
+                    
+                    self.kill_ffmpeg()
+                
+            except Exception as ex:
+                print("stop streaming ffmpeg error: " + str(ex))
+            """
+
+            # should also stop libcamera-vid cleanly...
+            
+            # set LED color back to user preference
+            self.set_led(self.persistent_data['led_color'],self.persistent_data['led_brightness'], False)
+            
+            self.move_cover('closed')
+        
+        
+        try:
+            if self.DEBUG:
+                print("updating streaming state on adapter thing")
+            self.adapter.candlecam_device.properties["streaming"].update(state)
+        except Exception as ex:
+            print("Error setting streaming state on thing: " + str(ex))
+        
+        self.save_persistent_data()
+
+
+
+                   
+    def ringtone_change(self,choice):
+        if self.DEBUG:
+            print("\nnew ringtone choice: " + str(choice))
+        self.persistent_data['ringtone'] = choice
+        self.save_persistent_data()
+        self.play_ringtone()
+        
+        try:
+            #if self.thingy != None:
+             #   print("\n Thingy ringtone should get updated now...")
+                #self.ringtone_value.notify_of_external_update(choice)
+            
+            #self.get_loop()
+            #print("ringtone prop: " + str(dir(self.thingy.properties["ringtone"])))
+            #print("ringtone value prop: " + str(dir(self.thingy.properties["ringtone"].value)))
+            
+            #print("self.thingy.properties[ringtone].get_value(): " + str(self.thingy.properties["ringtone"].get_value()))
+            #if self.thingy.properties["ringtone"].get_value() != choice:
+            #    if self.DEBUG:
+            #        print("ringtone_change: routing to thingy, since it was not in this state")
+            #    time.sleep(.5)
+            #    #self.thingy.properties["ringtone"].value.set(choice) # this will cause streaming_change to be called again, but this time from the thingy
+            #    self.thingy.properties["ringtone"].value.notify_of_external_update(choice)
+        
+        
+            self.adapter.candlecam_device.properties["ringtone"].update(choice)
+        except Exception as ex:
+            print("Error setting ringtone on thing: " + str(ex))
+            
+        
+
+
+
+    def play_ringtone(self):
+        if self.DEBUG:
+            print('in play_ringtone')
+        try:
+            if str(self.persistent_data['ringtone']) != 'none':
+                ringtone_command = 'aplay -M -D plughw:' + str(self.plughw_number) + ' ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) + str(self.persistent_data['ringtone_volume'])+  '.wav'
+                # --buffer-time=8000
+                #ringtone_command = 'SDL_AUDIODRIVER="alsa" AUDIODEV="hw:1,0" ffplay ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
+                #ringtone_command = 'ffplay -autoexit ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
+            
+                if self.DEBUG:
+                    print("ringtone command: " + str(ringtone_command))
+            
+                ringtone_command_array = ringtone_command.split()
+        
+                if self.DEBUG:
+                    print('running ringtone split command:' + str(ringtone_command_array))
+                
+                #self.ringtone_process = subprocess.Popen(ringtone_command_array)
+                os.system(ringtone_command + " &")
+                
+        except Exception as ex:
+            print("Error playing ringtone: " + str(ex))
+
+        
+        
+    def set_led(self,hex,brightness,save=True): # sometimes the color should not be save saved, E.g. when the led turns red temporarily when the button is pressed
+        if self.DEBUG:
+            print("setting led color to: " + str(hex))
+            print("setting led brightness to: " + str(brightness) + "%")
+            #print("self.lights = " + str(self.lights))
+        
+        if save:
+            self.persistent_data['led_color'] = hex
+            self.persistent_data['led_brightness'] = brightness
+            self.save_persistent_data()
+        
+            try:
+                self.adapter.candlecam_device.properties["led_color"].update(str(hex))
+            except Exception as ex:
+                print("Error setting color on thing: " + str(ex))
+
+            try:
+                self.adapter.candlecam_device.properties["led_brightness"].update(int(brightness))
+            except Exception as ex:
+                print("Error setting led brightness on thing: " + str(ex))
+        
+        
+        # make sure the red LED light is always on while streaming
+        if self.persistent_data['streaming']:
+            self.set_leds_really(hex,brightness)
+            time.sleep(1)
+            hex = '#ff0000'
+            if brightness < 10:
+                brightness = 10
+        
+        self.set_leds_really(hex,brightness)
+        
+        
+    def set_leds_really(self,hex,brightness):
+        try:
+            hex = hex.lstrip('#')
+            rgb = tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))
+
+            r = rgb[0]
+            g = rgb[1]
+            b = rgb[2]
+        
+            #brightness = brightness / 100 # requires values between 0 and 1
+            
+            if self.DEBUG:
+                print('RGB =', str(rgb))
+                print('Brightness =', str(brightness))
+            
+            if self.lights:
+                self.lights.set_pixel(0, r, g, b, brightness)  # Pixel 1
+                self.lights.set_pixel(1, r, g, b, brightness)  # Pixel 2
+                self.lights.set_pixel(2, r, g, b, brightness)  # Pixel 3
+                self.lights.show()
+            else:
+                print("set_led: lights was None?")
+            
+        except Exception as ex:
+            print("could not set LED brightness: " + str(ex))
+
+
+        
+
+    
+                    
+                    
+
+    # Read the settings from the add-on settings page
+    def add_from_config(self):
+        """Attempt to add all configured devices."""
+        try:
+            database = Database(self.addon_name)
+            if not database.open():
+                print("Could not open settings database")
+                return
+            
+            config = database.load_config()
+            database.close()
+            
+        except Exception as ex:
+            print("Error! Failed to open settings database: " + str(ex))
+        
+        if not config:
+            print("Error loading config from database")
+            return
+        
+        if 'Debugging' in config:
+            self.DEBUG = bool(config['Debugging'])
+            if self.DEBUG:
+                print("-Debugging preference was in config: " + str(self.DEBUG))
+        
+        if self.DEBUG:
+            print(str(config))
+            
+            
+        
+            
+        #if 'Use microphone' in config:
+        #    self.encode_audio = bool(config['Use microphone'])
+        #    if self.DEBUG:
+        #        print("-Encode audio preference was in config: " + str(self.DEBUG))
+        
+        #if 'Use ramdrive' in config:
+        #    self.use_ramdrive = bool(config['Use ramdrive'])
+        #    if self.DEBUG:
+        #        print("-Use ramdrive preference was in config: " + str(self.DEBUG))
+        
+                
+        if 'Portrait mode' in config:
+            self.portrait_mode = bool(config['Portait mode'])
+            if self.DEBUG:
+                print("-Portait mode preference was in config: " + str(self.portrait_mode))
+
+        if 'High resolution' in config:
+            self.hires = bool(config['High resolution'])
+            
+            if self.DEBUG:
+                print("-High resolution preference was in config: " + str(self.hires))
+            
+            if self.hires:
+                self.maximum_connections = 1
+                if self.DEBUG:
+                    print("- set maximum connections to 1")
+                
+
+        #if 'Interval' in config:
+        #    self.interval = int(config['Interval'])
+        #    if self.DEBUG:
+        #        print("-Interval preference was in config: " + str(self.interval))
+
+        if 'Send snapshots to printer' in config:
+            self.send_snapshots_to_printer = bool(config['Send snapshots to printer'])
+            if self.DEBUG:
+                print("-Send snapshots to printer preference was in config: " + str(self.send_snapshots_to_printer))
+
+
+
+#
+#  NETWORK SCAN
+#
+    def network_scan(self): # looks for Candlecams on the local network
+        if self.DEBUG:
+            print("\n\nIn NETWORK SCAN")
+            
+        if self.busy_doing_network_scan:
+            if self.DEBUG:
+                print("- already doing scan, returning existing dict")
+            return self.gateways_ip_dict
+            
+        if (self.last_network_scan_time + 300) < time.time():
+            self.last_network_scan_time = int(time.time())
+            self.busy_doing_network_scan = True
+            if self.DEBUG:
+                print("doing a fresh network scan")
+            gateways_ip_dict = {}
+            try:
+                # Satellite targets
+                gateways_ip_dict = arpa_detect_gateways()
+                if self.DEBUG:
+                    print("- arpascan result: " + str(gateways_ip_dict))
+        
+                if self.camera_available:
+                    gateways_ip_dict[self.own_ip] = socket.gethostname()
+        
+                satellite_targets = {}
+                for ip_address in gateways_ip_dict: # server = ip address
+                
+                    if ip_address == self.own_ip:
+                        if self.DEBUG:
+                            print("skipping checking own IP")
+                            continue
+                        
+                    if self.DEBUG:
+                        print("checking server ip_address: " + str(ip_address))
+                
+                    try:
+                        #stream_url = 'http://' + ip_address + ':8889/media/candlecam/stream/stream.mjpeg';
+                        #r = requests.get(stream_url)
+                        #if self.DEBUG:
+                        #    print("status code: " + str(r.status_code))
+                        #if r.status_code == 200:
+                        nbtscan_output = subprocess.check_output(['sudo','nbtscan','-q',str(ip_address)])
+                        nbtscan_output = nbtscan_output.decode('utf-8')
+                        if self.DEBUG:
+                            print("nbtscan_output: " + str(nbtscan_output))
+                    
+                        if len(nbtscan_output) > 10:
+                            if self.DEBUG:
+                                print("nbtscan_output: " + str(nbtscan_output))
+                            shorter = nbtscan_output.split(" ",1)[1]
+                            shorter = shorter.lstrip()
+                            parts = shorter.split()
+                            gateways_ip_dict[ip_address] = parts[0]
+                    except Exception as ex:
+                        print("Error while checking server IP address: " + str(ex))
+            
+                if self.DEBUG:
+                    print("\nnew gateways_ip_dict: " + str(gateways_ip_dict))
+        
+                self.gateways_ip_dict = gateways_ip_dict
+            except Exception as ex:
+                print("Error in network_scan: " + str(ex))
+            
+            self.busy_doing_network_scan = False
+            
+            if len(gateways_ip_dict.keys() == 0):
+                last_network_scan_time = 0
+                
+            return gateways_ip_dict
+        
+        else:
+            if self.DEBUG:
+                print("Returning previous network scan results")
+            return self.gateways_ip_dict
+
+
+
+
+    def check_photo_printer(self):
+        if self.DEBUG:
+            print("Checking if a bluetooth photo printer is paired")
+
+        try:
+            if os.path.isdir(self.external_picture_drop_dir):
+                if self.DEBUG:
+                    print("privacy manager photo drop-off dir existed")
+                bluetooth_printer_check = run_command('sudo bluetoothctl paired-devices')
+                if self.DEBUG:
+                    print("bluetooth_printer_check: " + str(bluetooth_printer_check))
+                if 'peripage' in bluetooth_printer_check.lower():
+                    self.photo_printer_available = True
+                    if self.DEBUG:
+                        print("paired bluetooth printer was detected")
+                    return True
+            else:
+                if self.DEBUG:
+                    print("privacy manager photo drop-off dir did not exist, so no photo printing capability available")
+                    
+        except Exception as ex:
+            print("Error while checking photo printer: " + str(ex))
+        
+        self.photo_printer_available = False
+        return False
+
+
+    def try_sending_to_printer(self, filename):
+        try:
+            if self.send_snapshots_to_printer:
+                if self.check_photo_printer():
+                    from_filename = os.path.join(self.data_photos_dir_path, filename)
+                    if os.path.isfile(from_filename):
+                        if os.path.isdir(self.external_picture_drop_dir):
+                            to_filename = os.path.join(self.external_picture_drop_dir, filename)
+                            copy_command = 'cp -n ' + str(from_filename) + ' ' + str(to_filename)
+                            if self.DEBUG:
+                                print("copy_command: " + str(copy_command))
+                            os.system(copy_command)
+                        else:
+                            if self.DEBUG:
+                                print("photo drop dir (no longer) exists?")
+                    else:
+                        if self.DEBUG:
+                            print("Could not send to printer: filename not found")
+                else:
+                    if self.DEBUG:
+                        print("Could not send to printer: no bluetooth printer paired?")
+        except Exception as ex:
+            print("Error while sending to photo printer: " + str(ex))
+
+#
+#  HANDLE REQUESTS TO API
+#
+    def handle_request(self, request):
+        """
+        Handle a new API request for this handler.
+
+        request -- APIRequest object
+        """
+        
+        try:
+            
+            if self.ready == False:
+                time.sleep(4)
+            
+            if request.method != 'POST':
+                return APIResponse(status=404)
+            
+            if request.path == '/ajax' or request.path == '/list' or request.path == '/delete':
+
+                try:
+                    if request.path == '/ajax':
+                        if self.DEBUG:
+                            print("Ajax")
+                        
+                            
+                        try:
+                            action = str(request.body['action'])    
+                            
+                            if action == 'init': # /init
+                                state = True
+                                if self.DEBUG:
+                                    print('ajax handling init')
+                                    print("self.persistent_data = " + str(self.persistent_data))
+                                
+                                try:
+                                    self.gateways_ip_dict = self.network_scan()
+                                except Exception as ex:
+                                    print("Error gettings gateways dict: " + str(ex))
+                                    state = False
+                                
+                                try:
+                                    photos_list = self.scan_photo_dir()
+                                    if isinstance(photos_list, str):
+                                        state = False
+                                except Exception as ex:
+                                    print("Error scanning for existing photos: " + str(ex))
+                                    photos_list = []
+                                    
+                                    
+                                return APIResponse(
+                                  status=200,
+                                  content_type='application/json',
+                                  #content=json.dumps({'state' : True, 'message' : 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
+                                  content=json.dumps({'state': state, 'own_ip': self.own_ip, 'message': 'initialization complete', 'thing_settings': self.persistent_data['thing_settings'], 'gateways':self.gateways_ip_dict, 'photos':photos_list, 'camera_available':self.camera_available,'webthings_addon_detected':self.webthings_addon_detected }),
+                                )
+                                
+                                
+                            elif action == 'save_settings':
+                                
+                                self.persistent_data['thing_settings'] = request.body['thing_settings'] 
+                                if self.DEBUG:
+                                    print("self.persistent_data['thing_settings'] = " + str(self.persistent_data['thing_settings'])) 
+                                self.save_persistent_data()
+                                 
+                                return APIResponse(
+                                  status=200,
+                                  content_type='application/json',
+                                  content=json.dumps({'state' : True, 'message': 'settings saved succesfully'}),
+                                )
+                                
+                                
+                            elif action == 'grab_picture_from_stream':
+                                state = False
+                                photos_list = []
+                                try:
+                                    if 'stream_url' in request.body:
+                                        stream_url = str(request.body['stream_url'])    
+                                    
+                                        state = self.grab_snapshots(stream_url)
+                                            
+                                        time.sleep(1)
+                                        try:
+                                            photos_list = self.scan_photo_dir()
+                                            if isinstance(photos_list, str):
+                                                state = False
+                                                photos_list = []
+                                        except Exception as ex:
+                                            print("Error scanning for existing photos: " + str(ex))
+                                            photos_list = []
+                                            
+                                except Exception as ex:
+                                    if self.DEBUG:
+                                        print("error grabbing image from stream: " + str(ex))
+                            
+                                return APIResponse(
+                                  status=200,
+                                  content_type='application/json',
+                                  content=json.dumps({'state' : state, 'message': '','photos':photos_list}),
+                                )
+                            
+                            
+                            elif action == 'delete_all':
+                                if self.DEBUG:
+                                    print("DELETING ALL")
+                                state = False
+                                data = []
+                                #target_data_type = self.data_types_lookup_table[int(request.body['property_id'])]
+                                #print("target data type from internal lookup table: " + str(target_data_type))
+                                # action, data_type, property_id, new_value, old_date, new_date
+                                try:
+                                    data = self.delete_all()
+                                    if isinstance(data, str):
+                                        state = False
+                                    else:
+                                        state = True
+                                except Exception as ex:
+                                    print("Error handling delete_all: " + str(ex))
+                        
+                                return APIResponse(
+                                  status=200,
+                                  content_type='application/json',
+                                  content=json.dumps({'state' : state, 'data' : data}),
+                                )
+                                
+                            
+                            
+                            """
+                            elif action == 'download_snapshot':
+                                state = False
+                                photos_list = []
+                                try:
+                                    if 'snapshot_url' in request.body:
+                                        snapshot_url = str(request.body['snapshot_url'])    
+                                    
+                                        if snapshot_url.endswith('.jpg') or snapshot_url.endswith('.jpeg'):
+                                            state = self.download_snapshot(snapshot_url)
+                                            
+                                        time.sleep(1)
+                                        try:
+                                            photos_list = self.scan_photo_dir()
+                                            if isinstance(photos_list, str):
+                                                state = False
+                                                photos_list = []
+                                        except Exception as ex:
+                                            print("Error scanning for existing photos: " + str(ex))
+                                            photos_list = []
+                                            
+                                except Exception as ex:
+                                    if self.DEBUG:
+                                        print("error downloading snapshot: " + str(ex))
+                            
+                                return APIResponse(
+                                  status=200,
+                                  content_type='application/json',
+                                  content=json.dumps({'state' : state, 'message': '','photos':photos_list}),
+                                )
+                             """
+                            
+                        except Exception as ex:
+                            if self.DEBUG:
+                                print("Error getting init data: " + str(ex))
+                            return APIResponse(
+                              status=500,
+                              content_type='application/json',
+                              content=json.dumps("Error while getting thing data: " + str(ex)),
+                            )
+                    
+                    
+                    
+                    if request.path == '/list':
+                        if self.DEBUG:
+                            print("LISTING")
+                        # Get the list of photos
+                        try:
+                            
+                            #self.camera.capture(self.photos_file_path, use_video_port=True)
+                            
+                            data = self.scan_photo_dir()
+                            if isinstance(data, str):
+                                state = 'error'
+                            else:
+                                state = 'ok'
+                            
+                            return APIResponse(
+                              status=200,
+                              content_type='application/json',
+                              content=json.dumps({'state' : state, 'data' : data}),
+                            )
+                        except Exception as ex:
+                            print("Error getting init data: " + str(ex))
+                            return APIResponse(
+                              status=500,
+                              content_type='application/json',
+                              content=json.dumps("Error while getting thing data: " + str(ex)),
+                            )
+                            
+                            
+                            
+                    elif request.path == '/delete':
+                        if self.DEBUG:
+                            print("DELETING")
+                        try:
+                            data = []
+                            #target_data_type = self.data_types_lookup_table[int(request.body['property_id'])]
+                            #print("target data type from internal lookup table: " + str(target_data_type))
+                            # action, data_type, property_id, new_value, old_date, new_date
+                            data = self.delete_file( str(request.body['filename']) )
+                            if isinstance(data, str):
+                                state = 'error'
+                            else:
+                                state = 'ok'
+                            
+                            return APIResponse(
+                              status=200,
+                              content_type='application/json',
+                              content=json.dumps({'state' : state, 'data' : data}),
+                            )
+                        except Exception as ex:
+                            print("Error getting thing data: " + str(ex))
+                            return APIResponse(
+                              status=500,
+                              content_type='application/json',
+                              content=json.dumps("Error while changing point: " + str(ex)),
+                            )
+                            
+                            
+                            
+                        
+                        
+                    else:
+                        return APIResponse(
+                          status=500,
+                          content_type='application/json',
+                          content=json.dumps("API error"),
+                        )
+                        
+                        
+                except Exception as ex:
+                    if self.DEBUG:
+                        print("general api error: " + str(ex))
+                    return APIResponse(
+                      status=500,
+                      content_type='application/json',
+                      content=json.dumps("Error"),
+                    )
+                    
+            else:
+                return APIResponse(status=404)
+                
+        except Exception as e:
+            print("Failed to handle UX extension API request: " + str(e))
+            return APIResponse(
+              status=500,
+              content_type='application/json',
+              content=json.dumps("API Error"),
+            )
+        
+
+
+
+    def unload(self):
+        if self.DEBUG:
+            print("Shutting down")
+        self.running = False
+            
+        try:
+            if self.picam != None:
+                #self.picam.stop_recording()
+                #self.output.close()
+                #self.picam.stop_preview()
+                self.picam.close()
+        except Exception as ex:
+            print("Unload: stopping picamera error: " + str(ex))
+            
+        if self.thing_server != None:
+            self.thing_server.stop()
+            
+        #os.system('pkill libcamera-jpeg')
+        #os.system('pkill libcamera-vid')
+        
+        try:
+            if self.pwm != None:
+                self.pwm.stop()
+            #self.pi.stop()
+            
+        except Exception as ex:
+            print("Unload: stopping GPIO error: " + str(ex))
+        
+        try:
+            if self.ffmpeg_process != None:
+                poll = self.ffmpeg_process.poll()
+                if self.DEBUG:
+                    print("poll = " + str(poll))
+                if poll == None:
+                    if self.DEBUG:
+                        print("poll was None - ffmpeg is still running.")
+                    self.ffmpeg_process.terminate()
+                    if self.DEBUG:
+                        print("past terminate")
+                    self.ffmpeg_process.wait()
+                    if self.DEBUG:
+                        print("past wait")
+                else:
+                    print("poll was not none - ffmpeg crashed earlier?")
+                    
+                self.kill_ffmpeg() # for good measure
+        except Exception as ex:
+            print("Unload: terminating ffmpeg_process error: " + str(ex))
+
+        #time.sleep(1)
+        if self.ramdrive_created:
+            print("unmounting ramdrive")
+            os.system('sudo umount ' + self.media_stream_dir_path)
+            if self.DEBUG:
+                print("candlecam ramdrive unmounted")
+
+
+
+    
+    # If the 'take snapshot' button is pressed on the webthingy
+    def thingy_take_snapshot(self,state):
+        if self.DEBUG:
+            print("\nHERE\nin thingy_take_snapshot. state: " + str(state))
+        if state:
+            global taking_a_photo_countdown
+            if taking_a_photo_countdown == 0:
+                taking_a_photo_countdown = self.taking_a_photo_countdown_start
+            #self.grab_snapshots(self.own_mjpeg_url)
+            # Switch thingy snapshot button back to off        
+    
+    
+    # From UI, takes snapshots from all discovered cameras unless a specific stream URL is specified
+    def grab_snapshots(self,url=None):
+        if self.DEBUG:
+            print("in grab_snapshots. url?: " + str(url))
+        
+        try:
+            stream_urls = []
+            if url == None:
+                for ip in self.gateways_ip_dict.keys():
+                    stream_urls.append('http://' + ip + ':8889/media/candlecam/stream/stream.mjpeg')
+            else:
+                stream_urls = [url]
+            
+            if self.DEBUG:
+                print("grab_snapshots: stream_urls: " + str(stream_urls))
+        
+            for stream_url in stream_urls:
+                if stream_url.endswith('mjpg') or stream_url.endswith('mjpeg'):
+            
+                    if '/media/candlecam/stream/stream.mjpeg' in stream_url:
+                        stream_url = stream_url.replace('/media/candlecam/stream/stream.mjpeg','/snapshot.jpg')
+                        state = self.download_snapshot(stream_url)
+                    else:
+                        state = self.grab_mjpeg_frame(stream_url)
+        except Exception as ex:
+            print("error grabbing snapshots: " + str(ex))
+            return False
+        
+        return True
+
+
+    def grab_mjpeg_frame(self, stream_url):
+        found_jpeg = False
+        filename = ""
+        result = False
+        try:
+            
+            looking_for_jpeg = True
+            looking_loops_counter = 0
+            
+            if self.DEBUG:
+                print("grabbing jpeg from: " + str(stream_url))
+            
+            # If we're asked to grab a frame from our own stream, then take a shortcut by asking picamera to save a photo.
+            if stream_url == self.own_mjpeg_url:
+                if self.DEBUG:
+                    print("target mjpeg stream url is own mjpeg stream url. Taking shortcut.")
+                #self.take_a_photo = True
+                global taking_a_photo_countdown
+                
+                if taking_a_photo_countdown == 0:
+                    taking_a_photo_countdown = self.taking_a_photo_countdown_start
+                result = True
+            
+            else:
+            
+                stream = requests.get(stream_url, stream=True)
+                if stream.ok:
+                    a = -1
+                    b = -1
+                    chunk_size = 1024
+                    fresh_bytes = b''
+                    for chunk in stream.iter_content(chunk_size=chunk_size):
+                        fresh_bytes += chunk
+                        try:
+                            looking_loops_counter += 1
+                            #if self.DEBUG:
+                            #    print(str(looking_loops_counter))
+                        
+                            if looking_loops_counter > 1000:
+                                looking_for_jpeg = False
+                                if self.DEBUG:
+                                    print("Warning, reached maximum looking_loops_counter")
+                                break
+                            
+                            if a == -1:
+                                a = fresh_bytes.find(b'\xff\xd8')
+                            b = fresh_bytes.find(b'\xff\xd9')
+                            #if self.DEBUG:
+                            #    print("bytes read. a: " + str(a))
+                            #    print("bytes read. b: " + str(b))
+                            if a != -1 and b != -1:
+                                jpg = fresh_bytes[a:b+2]
+                                fresh_bytes = fresh_bytes[b+2:]
+                
+                                filename = str(int(time.time())) + '.jpg'
+                                file_path = os.path.join( self.data_photos_dir_path,filename)
+                                with open(file_path, "wb") as fh:
+                                    fh.write(jpg)
+                                found_jpeg = True
+                                result = True
+                                looking_for_jpeg = False
+                                if self.DEBUG:
+                                    print("looking loops required: " + str(looking_loops_counter))
+                            
+                                # Copy into matrix drop-off dir, if it exists
+                                if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
+                                    drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + filename)
+                                    os.system('cp ' + file_path + ' ' + drop_file_path)
+                            
+                                # Print to bluetooth printer if so desired
+                                self.try_sending_to_printer(filename)
+                            
+                                break
+                            
+                        except Exception as ex:
+                            print("Error in grab_mjpeg_frame for-loop: " + str(ex))
+                        
+        except Exception as ex:
+            print("Error in grab_mjpeg_frame: " + str(ex))
+        return result
+
+
+
+    def download_snapshot(self,snapshot_url):
+        if self.DEBUG:
+            print("in download_snapshot with snapshot_url: " + str(snapshot_url))
+        try:
+            
+            if snapshot_url == self.own_snapshot_url:
+                if self.DEBUG:
+                    print("target snapshot url is own snapshot url. Taking shortcut.")
+                #self.take_a_photo = True
+                
+                global taking_a_photo_countdown
+                
+                if taking_a_photo_countdown == 0:
+                    taking_a_photo_countdown = self.taking_a_photo_countdown_start
+                return True
+            
+            else:
+            
+                with requests.get(snapshot_url) as response:
+                    #response.raise_for_status()
+            
+                    filename = str(int(time.time())) + '.jpg'
+                    file_path = os.path.join( self.data_photos_dir_path,filename)
+                    if self.DEBUG:
+                        print("downloading snapshot to: " + str(file_path))
+                    with open(file_path, 'wb') as f:
+                        #for chunk in r.iter_content(chunk_size=8192): 
+                            # If you have chunk encoded response uncomment if
+                            # and set chunk_size parameter to None.
+                            #if chunk: 
+                            #f.write(chunk)
+                        f.write(response.content)
+                
+                    if self.DEBUG:
+                        print("snapshot written to disk succesfully?: " + str(os.path.isfile(file_path)))
+                
+                    # Also send to Matrix
+                    if self.copy_saved_files_to_matrix:
+                        if self.DEBUG:
+                            print("- sending snapshot to Matrix is allowed")
+                        if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
+                            if self.DEBUG:
+                                print("- Voco's Matrix drop-off dir exists")
+                            drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + filename)
+                            if self.DEBUG:
+                                print("drop_file_path: " + str(drop_file_path))
+                            os.system('cp ' + file_path + ' ' + drop_file_path)
+                        else:
+                            if self.DEBUG:
+                                print("matrix drop-off dir doesn't exist, or the snapshot wasn't saved")
+                
+                    return True
+        except Exception as ex:
+            print("Error in download_snapshot: " + str(ex))
+
+        return False
+
+
+    # DELETE A FILE
+    
+    def delete_file(self,filename):
+        result = "error"
+        try:
+            file_path = os.path.join(self.data_photos_dir_path, str(filename))
+            os.remove(file_path)
+            result = self.scan_photo_dir()
+        except Exception as ex:
+            if self.DEBUG:
+                print("Error deleting photo: " + str(ex))
+        
+        return result
+
+
+    def scan_photo_dir(self):
+        result = []
+        try:
+            for fname in os.listdir(self.data_photos_dir_path):
+                if fname.endswith(".jpg") or fname.endswith(".jpeg") or fname.endswith(".gif"):
+                    result.append(fname)    
+        except:
+            print("Error scanning photo directory")
+        
+        return result
+
+    
+    def delete_all(self):
+        result = []
+        try:
+            for fname in os.listdir(self.data_photos_dir_path):
+                file_path = os.path.join(self.data_photos_dir_path,fname)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    print("- deleted: " + str(file_path))
+        except:
+            print("Error deleting files in photo directory")
+        
+        return self.scan_photo_dir()
+
+
+            
+
+    #
+    #  PERSISTENCE
+    #
+
+    def save_persistent_data(self):
+        if self.DEBUG:
+            print("Saving to persistence data store at path: " + str(self.persistence_file_path))
+            
+        try:
+            if not os.path.isfile(self.persistence_file_path):
+                open(self.persistence_file_path, 'a').close()
+                if self.DEBUG:
+                    print("Created an empty persistence file")
+            else:
+                if self.DEBUG:
+                    print("Persistence file existed. Will try to save to it.")
+
+            with open(self.persistence_file_path) as f:
+                #if self.DEBUG:
+                #    print("saving persistent data: " + str(self.persistent_data))
+                json.dump( self.persistent_data, open( self.persistence_file_path, 'w+' ) )
+                if self.DEBUG:
+                    print("Data stored")
+                return True
+
+        except Exception as ex:
+            print("Error: could not store data in persistent store: " + str(ex) )
+            print(str(self.persistent_data))
+            return False
+    
+
+
+    def get_loop(self):
+        
+        
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.set_event_loop(loop)
+        except Exception as ex:
+            if self.DEBUG:
+                print("ERROR, using get_running_loop failed: " + str(ex))
+            
+            try:
+                loop = tornado.ioloop.IOLoop.current()
+                asyncio.set_event_loop(loop)
+            except Exception as ex:
+                if self.DEBUG:
+                    print("ERROR, using tornado.ioloop.IOLoop.current failed: " + str(ex))
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                    
+                
+        """
+        if self.loop != None:
+            #return self.loop
+            print("get_loop:  self.loop was not none, setting it as event loop")
+            print("tornado.ioloop.IOLoop.current(): " + str(tornado.ioloop.IOLoop.current()))
+            asyncio.set_event_loop(tornado.ioloop.IOLoop.current())
+            
+        else:
+            print("self.loop was None?! ------- ++++")
+            
+        try:
+            if self.loop != None:
+                #return self.loop
+                print("get_loop:  self.loop was not none, setting it as event loop")
+                asyncio.set_event_loop(self.loop)
+            else:
+                print("\nself.loop was NONE????-----------")
+                try:
+                    #self.loop = asyncio.get_running_loop()
+                    self.loop = tornado.ioloop.IOLoop.current()
+                    asyncio.set_event_loop(self.loop)
+                except Exception as ex:
+                    print("DARNIT, re-setting tornade event loop failed: " + str(ex))
+                    
+        except Exception as ex:
+            if self.DEBUG:
+                print("ERROR, using running Tornado event loop failed: " + str(ex))
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
         """
         
     
+
     # ding dong - button pressed on respeaker board
     def ding(self, button):
         if self.DEBUG:
@@ -1179,7 +2422,8 @@ class CandlecamAPIHandler(APIHandler):
         global taking_a_photo_countdown
         
         if taking_a_photo_countdown > 0:
-            print("[o] " + str(taking_a_photo_countdown))
+            if self.DEBUG:
+                print("[o] " + str(taking_a_photo_countdown))
             
             if taking_a_photo_countdown == (self.taking_a_photo_countdown_start - 1):
                 self.move_cover('open')
@@ -1187,7 +2431,8 @@ class CandlecamAPIHandler(APIHandler):
                 self.thingy.properties["snapshot"].value.notify_of_external_update(True)
                 
             if taking_a_photo_countdown == (self.taking_a_photo_countdown_start - 20):
-                print("\nSNAPSHOT COUNTDOWN HALFWAY, TAKING PHOTO")
+                if self.DEBUG:
+                    print("\nSNAPSHOT COUNTDOWN HALFWAY, TAKING PHOTO")
                 self.take_a_photo = True
                 
             if taking_a_photo_countdown == 1:
@@ -1257,12 +2502,12 @@ class CandlecamAPIHandler(APIHandler):
                     try:
                         #filename = os.path.basename(snapshot_path)
                         snapshot_time = int(os.path.splitext(filename)[0])
-                        if self.DEBUG:
-                            print("checking if snapshot is too old: " + str(snapshot_time))
+                        #if self.DEBUG:
+                        #    print("checking if snapshot is too old: " + str(snapshot_time))
                         if snapshot_time < threshold_time:
                             file_path = os.path.join(self.data_photos_dir_path,filename)
                             if self.DEBUG:
-                                print("- Too old. Deleting: " + str(file_path))
+                                print("- Snapshot too old. Deleting: " + str(file_path))
                             os.remove(file_path)
                                 
                     except Exception as ex:
@@ -1284,7 +2529,7 @@ class CandlecamAPIHandler(APIHandler):
             print("thing_server_id: " + str(self.persistent_data['thing_server_id']))
             print("create thingy: data_retention_days: " + str(self.persistent_data['data_retention_days']))
         
-            #time.sleep(5)
+        time.sleep(2)
         
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -1560,12 +2805,15 @@ class CandlecamAPIHandler(APIHandler):
         ]
         
         #more_routes.append( (r"/media/candlecam/stream/(.*)", tornado.web.StaticFileHandler, {"path": self.media_stream_dir_path}) )
-        more_routes.append( (r"/media/candlecam/stream/(.*)", StreamyHandler ) )
-        more_routes.append( (r"/snapshot.jpg", SnapshotHandler ) )
+        #more_routes.append( (r"/media/candlecam/stream/(.*)", StreamyHandler ) )
+        more_routes.append( (r"/media/candlecam/stream/(.*)", StreamyHandler, {"api_handler" : self} ) )
+        #(r"/test", SomeHandler, {"ref_object" : self.ref_object}),
+        more_routes.append( (r"/snapshot.jpg", SnapshotHandler, {"api_handler" : self} ) )
         more_routes.append( (r"/ping", PingHandler ) )
         #more_routes.append( (r'/mjpg', StreamyHandler) ) 
         
         #"""
+        
         if self.DEBUG:
             print("starting thing server (will block). self.webthing_port: " + str(self.webthing_port))
             print("\n\n")
@@ -1613,1057 +2861,39 @@ class CandlecamAPIHandler(APIHandler):
 
 
 
+
+    """
+    def get_frame(self, size=None):
+        if size is None:
+            size = (640,480)
+        output = io.BytesIO()
+        self.picam.capture(output, format='jpeg', resize=(640,480), use_video_port=True)
+        output.seek(0)
+        return output
+    """
     
-                    
-                    
-                    
-    def move_cover(self,state,save=True):
-        if self.has_respeaker_hat and self.camera_available:
-            
-            if state == 'closed':
-                #self.set_led(self.persistent_data['led_color'],self.persistent_data['led_brightness'],False)
-                try:
-                    if self.DEBUG:
-                        print("closing cover?: " + str(self.servo_closed_position))
-                    self.pwm.ChangeDutyCycle(70)
-                    if self.DEBUG:
-                        print("set servo to closed (1)")
-                except Exception as ex:
-                    if self.DEBUG:
-                        print("could not set servo: " + str(ex))
-                    
-            elif state == 'open':
-                #self.set_led('#ff0000',30,False) # set LED to full brightness.
-                try:
-                    if self.DEBUG:
-                        print("opening cover?: " + str(self.servo_open_position))
-                    self.pwm.ChangeDutyCycle(1)
-                    if self.DEBUG:
-                        print("set servo to open (70)")
-                except Exception as ex:
-                    if self.DEBUG:
-                        print("could not set servo: " + str(ex))
-    
-            elif state == 'maintenance':
-                try:
-                    self.pwm.ChangeDutyCycle(100)
-                    if self.DEBUG:
-                        print("set servo to maintenance (100)")
-                except Exception as ex:
-                    if self.DEBUG:
-                        print("could not set servo: " + str(ex))
-        
-        else:
-            if self.DEBUG:
-                print("no hat and/or no camera, so no need to move the servo")
-        #if self.politeness:
-        #    state = 'closed'
-        if save:
-            self.persistent_data['cover_state'] = state
-            self.save_persistent_data()
-
-
-
-    def politeness_change(self,politeness_state):
-        if self.DEBUG:
-            print("in politeness, state changes to: " + str(politeness_state))
-        self.persistent_data['politeness'] = politeness_state
-        self.save_persistent_data()
-        
-        if self.pressed_countdown == 0:
-            self.move_cover('closed')
-            self.streaming_change(False)
-
-        try:
-            self.adapter.candlecam_device.properties["politeness"].update(politeness_state)
-        except Exception as ex:
-            print("Error setting politeness_state on thing: " + str(ex))
-
-        
-
-    def volume_change(self,ringtone_volume):
-        if self.DEBUG:
-            print("new ringtone_volume: " + str(ringtone_volume))
-        self.persistent_data['ringtone_volume'] = ringtone_volume
-        self.save_persistent_data()            
-
-        try:
-            self.adapter.candlecam_device.properties["ringtone_volume"].update(ringtone_volume)
-        except Exception as ex:
-            print("Error setting ringtone volume on thing: " + str(ex))
-        
-        
-
-    def streaming_change(self,state):
-        if self.DEBUG:
-            print("in streaming_changereally. new streaming state: " + str(state))
-            #print("self.encode_audio: " + str(self.encode_audio))
-        
-        if self.camera_available == False:
-            print("no camera available")
-            return
-        
-        global streaming
-        streaming = state
-        #self.streaming = state
-        self.persistent_data['streaming'] = state
-    
-        
-        
-        if state:
-            self.snapshot1 = tracemalloc.take_snapshot()
-        else:
-            
-            self.snapshot2 = tracemalloc.take_snapshot()
-            if self.snapshot1 != None:
-                top_stats = self.snapshot2.compare_to(self.snapshot1, 'lineno')
-                print("[ Top 10 differences ]")
-                for stat in top_stats[:10]:
-                    print(stat)
-
-        
-            collected = gc.collect()
- 
-            # Prints Garbage collector
-            # as 0 object
-            print("Garbage collector: collected",
-                      "%d objects." % collected)
-        
-        
-        # START STREAMING
-        if state:
-            if self.DEBUG:
-                print("")
-                print("STREAMING ON")
-            
-            self.set_led('#ff0000',self.persistent_data['led_brightness'],False)
-            
-            self.move_cover('open')
-            
-        # STOP STREAMING
-        else:
-            if self.DEBUG:
-                print("")
-                print("STREAMING OFF")
-            
-            
-            
-            """
-            try:
-                if self.ffmpeg_process != None:
-                    self.ffmpeg_process.terminate()
-                    if self.DEBUG:
-                        print("ffmpeg process terminated command sent")
-                    self.ffmpeg_process.kill()
-                    if self.DEBUG:
-                        print("ffmpeg process kill command sent")
-                    self.ffmpeg_process.wait()
-                    if self.DEBUG:
-                        print("ffmpeg process terminated?")
-                    
-                    self.kill_ffmpeg()
-                
-            except Exception as ex:
-                print("stop streaming ffmpeg error: " + str(ex))
-            """
-
-            # should also stop libcamera-vid cleanly...
-            
-            # set LED color back to user preference
-            self.set_led(self.persistent_data['led_color'],self.persistent_data['led_brightness'], False)
-            
-            self.move_cover('closed')
-        
-        
-        try:
-            if self.DEBUG:
-                print("updating streaming state on adapter thing")
-            self.adapter.candlecam_device.properties["streaming"].update(state)
-        except Exception as ex:
-            print("Error setting streaming state on thing: " + str(ex))
-        
-        self.save_persistent_data()
-
-
-
-                   
-    def ringtone_change(self,choice):
-        if self.DEBUG:
-            print("\nnew ringtone choice: " + str(choice))
-        self.persistent_data['ringtone'] = choice
-        self.save_persistent_data()
-        self.play_ringtone()
-        
-        try:
-            #if self.thingy != None:
-             #   print("\n Thingy ringtone should get updated now...")
-                #self.ringtone_value.notify_of_external_update(choice)
-            
-            #self.get_loop()
-            #print("ringtone prop: " + str(dir(self.thingy.properties["ringtone"])))
-            #print("ringtone value prop: " + str(dir(self.thingy.properties["ringtone"].value)))
-            
-            #print("self.thingy.properties[ringtone].get_value(): " + str(self.thingy.properties["ringtone"].get_value()))
-            #if self.thingy.properties["ringtone"].get_value() != choice:
-            #    if self.DEBUG:
-            #        print("ringtone_change: routing to thingy, since it was not in this state")
-            #    time.sleep(.5)
-            #    #self.thingy.properties["ringtone"].value.set(choice) # this will cause streaming_change to be called again, but this time from the thingy
-            #    self.thingy.properties["ringtone"].value.notify_of_external_update(choice)
-        
-        
-            self.adapter.candlecam_device.properties["ringtone"].update(choice)
-        except Exception as ex:
-            print("Error setting ringtone on thing: " + str(ex))
-            
-        
-
-
-
-    def play_ringtone(self):
-        if self.DEBUG:
-            print('in play_ringtone')
-        try:
-            if str(self.persistent_data['ringtone']) != 'none':
-                ringtone_command = 'aplay -M -D plughw:' + str(self.plughw_number) + ' ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) + str(self.persistent_data['ringtone_volume'])+  '.wav'
-                # --buffer-time=8000
-                #ringtone_command = 'SDL_AUDIODRIVER="alsa" AUDIODEV="hw:1,0" ffplay ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
-                #ringtone_command = 'ffplay -autoexit ' + str(self.addon_sounds_dir_path) + str(self.persistent_data['ringtone']) +  '.mp3'
-            
-                if self.DEBUG:
-                    print("ringtone command: " + str(ringtone_command))
-            
-                ringtone_command_array = ringtone_command.split()
-        
-                if self.DEBUG:
-                    print('running ringtone split command:' + str(ringtone_command_array))
-                
-                #self.ringtone_process = subprocess.Popen(ringtone_command_array)
-                os.system(ringtone_command + " &")
-                
-        except Exception as ex:
-            print("Error playing ringtone: " + str(ex))
-
-        
-        
-    def set_led(self,hex,brightness,save=True): # sometimes the color should not be save saved, E.g. when the led turns red temporarily when the button is pressed
-        if self.DEBUG:
-            print("setting led color to: " + str(hex))
-            print("setting led brightness to: " + str(brightness) + "%")
-            #print("self.lights = " + str(self.lights))
-        
-        if save:
-            self.persistent_data['led_color'] = hex
-            self.persistent_data['led_brightness'] = brightness
-            self.save_persistent_data()
-        
-            try:
-                self.adapter.candlecam_device.properties["led_color"].update(str(hex))
-            except Exception as ex:
-                print("Error setting color on thing: " + str(ex))
-
-            try:
-                self.adapter.candlecam_device.properties["led_brightness"].update(int(brightness))
-            except Exception as ex:
-                print("Error setting led brightness on thing: " + str(ex))
-        
-        
-        # make sure the red LED light is always on while streaming
-        if self.persistent_data['streaming']:
-            self.set_leds_really(hex,brightness)
-            time.sleep(1)
-            hex = '#ff0000'
-            if brightness < 10:
-                brightness = 10
-        
-        self.set_leds_really(hex,brightness)
-        
-        
-    def set_leds_really(self,hex,brightness):
-        try:
-            hex = hex.lstrip('#')
-            rgb = tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))
-
-            r = rgb[0]
-            g = rgb[1]
-            b = rgb[2]
-        
-            #brightness = brightness / 100 # requires values between 0 and 1
-            
-            if self.DEBUG:
-                print('RGB =', str(rgb))
-                print('Brightness =', str(brightness))
-            
-            if self.lights:
-                self.lights.set_pixel(0, r, g, b, brightness)  # Pixel 1
-                self.lights.set_pixel(1, r, g, b, brightness)  # Pixel 2
-                self.lights.set_pixel(2, r, g, b, brightness)  # Pixel 3
-                self.lights.show()
-            else:
-                print("set_led: lights was None?")
-            
-        except Exception as ex:
-            print("could not set LED brightness: " + str(ex))
-
-
-        
-
-    
-                    
-                    
-
-    # Read the settings from the add-on settings page
-    def add_from_config(self):
-        """Attempt to add all configured devices."""
-        try:
-            database = Database(self.addon_name)
-            if not database.open():
-                print("Could not open settings database")
-                return
-            
-            config = database.load_config()
-            database.close()
-            
-        except Exception as ex:
-            print("Error! Failed to open settings database: " + str(ex))
-        
-        if not config:
-            print("Error loading config from database")
-            return
-        
-        if 'Debugging' in config:
-            self.DEBUG = bool(config['Debugging'])
-            if self.DEBUG:
-                print("-Debugging preference was in config: " + str(self.DEBUG))
-        
-        if self.DEBUG:
-            print(str(config))
-            
-            
-        #if 'Use microphone' in config:
-        #    self.encode_audio = bool(config['Use microphone'])
-        #    if self.DEBUG:
-        #        print("-Encode audio preference was in config: " + str(self.DEBUG))
-        
-        if 'Use ramdrive' in config:
-            self.use_ramdrive = bool(config['Use ramdrive'])
-            if self.DEBUG:
-                print("-Use ramdrive preference was in config: " + str(self.DEBUG))
-        
-                
-
-
-        #if 'Interval' in config:
-        #    self.interval = int(config['Interval'])
-        #    if self.DEBUG:
-        #        print("-Interval preference was in config: " + str(self.interval))
-
-        if 'Contain' in config:
-            self.contain = bool(config['Contain'])
-            if self.DEBUG:
-                print("-Contain photo preference was in config: " + str(self.contain))
-
-
-
 #
-#  NETWORK SCAN
+#  TORNADO CALLBACKS
 #
-    def network_scan(self): # looks for Candlecams on the local network
-        if self.DEBUG:
-            print("\n\nIn NETWORK SCAN")
-            
-        if self.busy_doing_network_scan:
-            if self.DEBUG:
-                print("- already doing scan, returning existing dict")
-            return self.gateways_ip_dict
-            
-        if (self.last_network_scan_time + 300) < time.time():
-            self.last_network_scan_time = int(time.time())
-            self.busy_doing_network_scan = True
-            if self.DEBUG:
-                print("doing a fresh network scan")
-            gateways_ip_dict = {}
-            try:
-                # Satellite targets
-                gateways_ip_dict = arpa_detect_gateways()
-                if self.DEBUG:
-                    print("- arpascan result: " + str(gateways_ip_dict))
-        
-                if self.camera_available:
-                    gateways_ip_dict[self.own_ip] = socket.gethostname()
-        
-                satellite_targets = {}
-                for ip_address in gateways_ip_dict: # server = ip address
-                
-                    if ip_address == self.own_ip:
-                        if self.DEBUG:
-                            print("skipping checking own IP")
-                            continue
-                        
-                    if self.DEBUG:
-                        print("checking server ip_address: " + str(ip_address))
-                
-                    try:
-                        #stream_url = 'http://' + ip_address + ':8889/media/candlecam/stream/stream.mjpeg';
-                        #r = requests.get(stream_url)
-                        #if self.DEBUG:
-                        #    print("status code: " + str(r.status_code))
-                        #if r.status_code == 200:
-                        nbtscan_output = subprocess.check_output(['sudo','nbtscan','-q',str(ip_address)])
-                        nbtscan_output = nbtscan_output.decode('utf-8')
-                        if self.DEBUG:
-                            print("nbtscan_output: " + str(nbtscan_output))
-                    
-                        if len(nbtscan_output) > 10:
-                            if self.DEBUG:
-                                print("nbtscan_output: " + str(nbtscan_output))
-                            shorter = nbtscan_output.split(" ",1)[1]
-                            shorter = shorter.lstrip()
-                            parts = shorter.split()
-                            gateways_ip_dict[ip_address] = parts[0]
-                    except Exception as ex:
-                        print("Error while checking server IP address: " + str(ex))
-            
-                if self.DEBUG:
-                    print("\nnew gateways_ip_dict: " + str(gateways_ip_dict))
-        
-                self.gateways_ip_dict = gateways_ip_dict
-            except Exception as ex:
-                print("Error in network_scan: " + str(ex))
-            
-            self.busy_doing_network_scan = False
-            
-            return gateways_ip_dict
-        
-        else:
-            if self.DEBUG:
-                print("Returning previous network scan results")
-            return self.gateways_ip_dict
-
-
-
-
-
-
-
-
-
-#
-#  HANDLE REQUESTS TO API
-#
-    def handle_request(self, request):
-        """
-        Handle a new API request for this handler.
-
-        request -- APIRequest object
-        """
-        
-        try:
-            
-            if self.ready == False:
-                time.sleep(4)
-            
-            if request.method != 'POST':
-                return APIResponse(status=404)
-            
-            if request.path == '/ajax' or request.path == '/list' or request.path == '/delete':
-
-                try:
-                    if request.path == '/ajax':
-                        if self.DEBUG:
-                            print("Ajax")
-                        
-                            
-                        try:
-                            action = str(request.body['action'])    
-                            
-                            if action == 'init':
-                                state = True
-                                if self.DEBUG:
-                                    print('ajax handling init')
-                                    print("self.persistent_data = " + str(self.persistent_data))
-                                
-                                try:
-                                    self.gateways_ip_dict = self.network_scan()
-                                except Exception as ex:
-                                    print("Error gettings gateways dict: " + str(ex))
-                                    state = False
-                                
-                                try:
-                                    photos_list = self.scan_photo_dir()
-                                    if isinstance(photos_list, str):
-                                        state = False
-                                except Exception as ex:
-                                    print("Error scanning for existing photos: " + str(ex))
-                                    photos_list = []
-                                    
-                                    
-                                return APIResponse(
-                                  status=200,
-                                  content_type='application/json',
-                                  #content=json.dumps({'state' : True, 'message' : 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
-                                  content=json.dumps({'state': state, 'own_ip': self.own_ip, 'message': 'initialization complete', 'thing_settings': self.persistent_data['thing_settings'], 'gateways':self.gateways_ip_dict, 'photos':photos_list }),
-                                )
-                                
-                                
-                            elif action == 'save_settings':
-                                
-                                self.persistent_data['thing_settings'] = request.body['thing_settings'] 
-                                if self.DEBUG:
-                                    print("self.persistent_data['thing_settings'] = " + str(self.persistent_data['thing_settings'])) 
-                                self.save_persistent_data()
-                                 
-                                return APIResponse(
-                                  status=200,
-                                  content_type='application/json',
-                                  content=json.dumps({'state' : True, 'message': 'settings saved succesfully'}),
-                                )
-                                
-                                
-                            elif action == 'grab_picture_from_stream':
-                                state = False
-                                photos_list = []
-                                try:
-                                    if 'stream_url' in request.body:
-                                        stream_url = str(request.body['stream_url'])    
-                                    
-                                        state = self.grab_snapshots(stream_url)
-                                            
-                                        time.sleep(1)
-                                        try:
-                                            photos_list = self.scan_photo_dir()
-                                            if isinstance(photos_list, str):
-                                                state = False
-                                                photos_list = []
-                                        except Exception as ex:
-                                            print("Error scanning for existing photos: " + str(ex))
-                                            photos_list = []
-                                            
-                                except Exception as ex:
-                                    if self.DEBUG:
-                                        print("error grabbing image from stream: " + str(ex))
-                            
-                                return APIResponse(
-                                  status=200,
-                                  content_type='application/json',
-                                  content=json.dumps({'state' : state, 'message': '','photos':photos_list}),
-                                )
-                            
-                            """
-                            elif action == 'download_snapshot':
-                                state = False
-                                photos_list = []
-                                try:
-                                    if 'snapshot_url' in request.body:
-                                        snapshot_url = str(request.body['snapshot_url'])    
-                                    
-                                        if snapshot_url.endswith('.jpg') or snapshot_url.endswith('.jpeg'):
-                                            state = self.download_snapshot(snapshot_url)
-                                            
-                                        time.sleep(1)
-                                        try:
-                                            photos_list = self.scan_photo_dir()
-                                            if isinstance(photos_list, str):
-                                                state = False
-                                                photos_list = []
-                                        except Exception as ex:
-                                            print("Error scanning for existing photos: " + str(ex))
-                                            photos_list = []
-                                            
-                                except Exception as ex:
-                                    if self.DEBUG:
-                                        print("error downloading snapshot: " + str(ex))
-                            
-                                return APIResponse(
-                                  status=200,
-                                  content_type='application/json',
-                                  content=json.dumps({'state' : state, 'message': '','photos':photos_list}),
-                                )
-                             """
-                            
-                        except Exception as ex:
-                            if self.DEBUG:
-                                print("Error getting init data: " + str(ex))
-                            return APIResponse(
-                              status=500,
-                              content_type='application/json',
-                              content=json.dumps("Error while getting thing data: " + str(ex)),
-                            )
-                    
-                    
-                    
-                    if request.path == '/list':
-                        if self.DEBUG:
-                            print("LISTING")
-                        # Get the list of photos
-                        try:
-                            
-                            #self.camera.capture(self.photos_file_path, use_video_port=True)
-                            
-                            data = self.scan_photo_dir()
-                            if isinstance(data, str):
-                                state = 'error'
-                            else:
-                                state = 'ok'
-                            
-                            return APIResponse(
-                              status=200,
-                              content_type='application/json',
-                              content=json.dumps({'state' : state, 'data' : data}),
-                            )
-                        except Exception as ex:
-                            print("Error getting init data: " + str(ex))
-                            return APIResponse(
-                              status=500,
-                              content_type='application/json',
-                              content=json.dumps("Error while getting thing data: " + str(ex)),
-                            )
-                            
-                            
-                            
-                    elif request.path == '/delete':
-                        if self.DEBUG:
-                            print("DELETING")
-                        try:
-                            data = []
-                            #target_data_type = self.data_types_lookup_table[int(request.body['property_id'])]
-                            #print("target data type from internal lookup table: " + str(target_data_type))
-                            # action, data_type, property_id, new_value, old_date, new_date
-                            data = self.delete_file( str(request.body['filename']) )
-                            if isinstance(data, str):
-                                state = 'error'
-                            else:
-                                state = 'ok'
-                            
-                            return APIResponse(
-                              status=200,
-                              content_type='application/json',
-                              content=json.dumps({'state' : state, 'data' : data}),
-                            )
-                        except Exception as ex:
-                            print("Error getting thing data: " + str(ex))
-                            return APIResponse(
-                              status=500,
-                              content_type='application/json',
-                              content=json.dumps("Error while changing point: " + str(ex)),
-                            )
-                            
-                            
-                            
-                        
-                        
-                    else:
-                        return APIResponse(
-                          status=500,
-                          content_type='application/json',
-                          content=json.dumps("API error"),
-                        )
-                        
-                        
-                except Exception as ex:
-                    if self.DEBUG:
-                        print("general api error: " + str(ex))
-                    return APIResponse(
-                      status=500,
-                      content_type='application/json',
-                      content=json.dumps("Error"),
-                    )
-                    
-            else:
-                return APIResponse(status=404)
-                
-        except Exception as e:
-            print("Failed to handle UX extension API request: " + str(e))
-            return APIResponse(
-              status=500,
-              content_type='application/json',
-              content=json.dumps("API Error"),
-            )
-        
-
-
-
-    def unload(self):
-        if self.DEBUG:
-            print("Shutting down")
-        self.running = False
-            
-        try:
-            if self.picam != None:
-                self.picam.stop_recording()
-                self.output.close()
-                self.picam.stop_preview()
-                self.picam.close()
-        except Exception as ex:
-            print("Unload: stopping picamera error: " + str(ex))
-            
-        if self.thing_server != None:
-            self.thing_server.stop()
-            
-        #os.system('pkill libcamera-jpeg')
-        #os.system('pkill libcamera-vid')
-        
-        try:
-            if self.pwm != None:
-                self.pwm.stop()
-            #self.pi.stop()
-            
-        except Exception as ex:
-            print("Unload: stopping GPIO error: " + str(ex))
-        
-        try:
-            if self.ffmpeg_process != None:
-                poll = self.ffmpeg_process.poll()
-                if self.DEBUG:
-                    print("poll = " + str(poll))
-                if poll == None:
-                    if self.DEBUG:
-                        print("poll was None - ffmpeg is still running.")
-                    self.ffmpeg_process.terminate()
-                    if self.DEBUG:
-                        print("past terminate")
-                    self.ffmpeg_process.wait()
-                    if self.DEBUG:
-                        print("past wait")
-                else:
-                    print("poll was not none - ffmpeg crashed earlier?")
-                    
-                self.kill_ffmpeg() # for good measure
-        except Exception as ex:
-            print("Unload: terminating ffmpeg_process error: " + str(ex))
-
-        #time.sleep(1)
-        if self.ramdrive_created:
-            print("unmounting ramdrive")
-            os.system('sudo umount ' + self.media_stream_dir_path)
-            if self.DEBUG:
-                print("candlecam ramdrive unmounted")
-
-
-
-    
-    # If the 'take snapshot' button is pressed on the webthingy
-    def thingy_take_snapshot(self,state):
-        if self.DEBUG:
-            print("\nHERE\nin thingy_take_snapshot. state: " + str(state))
-        if state:
-            global taking_a_photo_countdown
-            if taking_a_photo_countdown == 0:
-                taking_a_photo_countdown = self.taking_a_photo_countdown_start
-            #self.grab_snapshots(self.own_mjpeg_url)
-            # Switch thingy snapshot button back to off        
-    
-    
-    # From UI, takes snapshots from all discovered cameras unless a specific stream URL is specified
-    def grab_snapshots(self,url=None):
-        if self.DEBUG:
-            print("in grab_snapshots. url?: " + str(url))
-        
-        try:
-            stream_urls = []
-            if url == None:
-                for ip in self.gateways_ip_dict.keys():
-                    stream_urls.append('http://' + ip + ':8889/media/candlecam/stream/stream.mjpeg')
-            else:
-                stream_urls = [url]
-            
-            if self.DEBUG:
-                print("grab_snapshots: stream_urls: " + str(stream_urls))
-        
-            for stream_url in stream_urls:
-                if stream_url.endswith('mjpg') or stream_url.endswith('mjpeg'):
-            
-                    if '/media/candlecam/stream/stream.mjpeg' in stream_url:
-                        stream_url = stream_url.replace('/media/candlecam/stream/stream.mjpeg','/snapshot.jpg')
-                        state = self.download_snapshot(stream_url)
-                    else:
-                        state = self.grab_mjpeg_frame(stream_url)
-        except Exception as ex:
-            print("error grabbing snapshots: " + str(ex))
-            return False
-        
-        return True
-
-
-    def grab_mjpeg_frame(self, stream_url):
-        found_jpeg = False
-        filename = ""
-        result = False
-        try:
-            
-            looking_for_jpeg = True
-            looking_loops_counter = 0
-            
-            if self.DEBUG:
-                print("grabbing jpeg from: " + str(stream_url))
-            
-            # If we're asked to grab a frame from our own stream, then take a shortcut by asking picamera to save a photo.
-            if stream_url == self.own_mjpeg_url:
-                if self.DEBUG:
-                    print("target mjpeg stream url is own mjpeg stream url. Taking shortcut.")
-                #self.take_a_photo = True
-                global taking_a_photo_countdown
-                
-                if taking_a_photo_countdown == 0:
-                    taking_a_photo_countdown = self.taking_a_photo_countdown_start
-                result = True
-            
-            else:
-            
-                stream = requests.get(stream_url, stream=True)
-                if stream.ok:
-                    a = -1
-                    b = -1
-                    chunk_size = 1024
-                    fresh_bytes = b''
-                    for chunk in stream.iter_content(chunk_size=chunk_size):
-                        fresh_bytes += chunk
-                        try:
-                            looking_loops_counter += 1
-                            #if self.DEBUG:
-                            #    print(str(looking_loops_counter))
-                        
-                            if looking_loops_counter > 1000:
-                                looking_for_jpeg = False
-                                if self.DEBUG:
-                                    print("Warning, reached maximum looking_loops_counter")
-                                break
-                            
-                            if a == -1:
-                                a = fresh_bytes.find(b'\xff\xd8')
-                            b = fresh_bytes.find(b'\xff\xd9')
-                            #if self.DEBUG:
-                            #    print("bytes read. a: " + str(a))
-                            #    print("bytes read. b: " + str(b))
-                            if a != -1 and b != -1:
-                                jpg = fresh_bytes[a:b+2]
-                                fresh_bytes = fresh_bytes[b+2:]
-                
-                                filename = str(int(time.time())) + '.jpg'
-                                file_path = os.path.join( self.data_photos_dir_path,filename)
-                                with open(file_path, "wb") as fh:
-                                    fh.write(jpg)
-                                found_jpeg = True
-                                result = True
-                                looking_for_jpeg = False
-                                if self.DEBUG:
-                                    print("looking loops required: " + str(looking_loops_counter))
-                            
-                                # Copy into matrix drop-off dir, if it exists
-                                if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
-                                    drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + filename)
-                                    os.system('cp ' + file_path + ' ' + drop_file_path)
-                            
-                                break
-                            
-                        except Exception as ex:
-                            print("Error in grab_mjpeg_frame for-loop: " + str(ex))
-                        
-        except Exception as ex:
-            print("Error in grab_mjpeg_frame: " + str(ex))
-        return result
-
-
-
-    def download_snapshot(self,snapshot_url):
-        if self.DEBUG:
-            print("in download_snapshot with snapshot_url: " + str(snapshot_url))
-        try:
-            
-            if snapshot_url == self.own_snapshot_url:
-                if self.DEBUG:
-                    print("target snapshot url is own snapshot url. Taking shortcut.")
-                #self.take_a_photo = True
-                
-                global taking_a_photo_countdown
-                
-                if taking_a_photo_countdown == 0:
-                    taking_a_photo_countdown = self.taking_a_photo_countdown_start
-                return True
-            
-            else:
-            
-                with requests.get(snapshot_url) as response:
-                    #response.raise_for_status()
-            
-                    filename = str(int(time.time())) + '.jpg'
-                    file_path = os.path.join( self.data_photos_dir_path,filename)
-                    if self.DEBUG:
-                        print("downloading snapshot to: " + str(file_path))
-                    with open(file_path, 'wb') as f:
-                        #for chunk in r.iter_content(chunk_size=8192): 
-                            # If you have chunk encoded response uncomment if
-                            # and set chunk_size parameter to None.
-                            #if chunk: 
-                            #f.write(chunk)
-                        f.write(response.content)
-                
-                    if self.DEBUG:
-                        print("snapshot written to disk succesfully?: " + str(os.path.isfile(file_path)))
-                
-                    # Also send to Matrix
-                    if self.copy_saved_files_to_matrix:
-                        if self.DEBUG:
-                            print("- sending snapshot to Matrix is allowed")
-                        if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
-                            if self.DEBUG:
-                                print("- Voco's Matrix drop-off dir exists")
-                            drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + filename)
-                            if self.DEBUG:
-                                print("drop_file_path: " + str(drop_file_path))
-                            os.system('cp ' + file_path + ' ' + drop_file_path)
-                        else:
-                            if self.DEBUG:
-                                print("matrix drop-off dir doesn't exist, or the snapshot wasn't saved")
-                
-                    return True
-        except Exception as ex:
-            print("Error in download_snapshot: " + str(ex))
-
-        return False
-
-
-    # DELETE A FILE
-    
-    def delete_file(self,filename):
-        result = "error"
-        try:
-            file_path = os.path.join(self.data_photos_dir_path, str(filename))
-            os.remove(file_path)
-            result = self.scan_photo_dir()
-        except Exception as ex:
-            if self.DEBUG:
-                print("Error deleting photo: " + str(ex))
-        
-        return result
-
-
-    def scan_photo_dir(self):
-        result = []
-        try:
-            for fname in os.listdir(self.data_photos_dir_path):
-                if fname.endswith(".jpg") or fname.endswith(".jpeg") or fname.endswith(".gif"):
-                    result.append(fname)    
-        except:
-            print("Error scanning photo directory")
-        
-        return result
-
-
-
-
-            
-
-    #
-    #  PERSISTENCE
-    #
-
-    def save_persistent_data(self):
-        if self.DEBUG:
-            print("Saving to persistence data store at path: " + str(self.persistence_file_path))
-            
-        try:
-            if not os.path.isfile(self.persistence_file_path):
-                open(self.persistence_file_path, 'a').close()
-                if self.DEBUG:
-                    print("Created an empty persistence file")
-            else:
-                if self.DEBUG:
-                    print("Persistence file existed. Will try to save to it.")
-
-            with open(self.persistence_file_path) as f:
-                #if self.DEBUG:
-                #    print("saving persistent data: " + str(self.persistent_data))
-                json.dump( self.persistent_data, open( self.persistence_file_path, 'w+' ) )
-                if self.DEBUG:
-                    print("Data stored")
-                return True
-
-        except Exception as ex:
-            print("Error: could not store data in persistent store: " + str(ex) )
-            print(str(self.persistent_data))
-            return False
-    
-
-
-    def get_loop(self):
-        
-        
-        try:
-            loop = asyncio.get_running_loop()
-            asyncio.set_event_loop(loop)
-        except Exception as ex:
-            if self.DEBUG:
-                print("ERROR, using get_running_loop failed: " + str(ex))
-            
-            try:
-                loop = tornado.ioloop.IOLoop.current()
-                asyncio.set_event_loop(loop)
-            except Exception as ex:
-                if self.DEBUG:
-                    print("ERROR, using tornado.ioloop.IOLoop.current failed: " + str(ex))
-                
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                    
-                
-        """
-        if self.loop != None:
-            #return self.loop
-            print("get_loop:  self.loop was not none, setting it as event loop")
-            print("tornado.ioloop.IOLoop.current(): " + str(tornado.ioloop.IOLoop.current()))
-            asyncio.set_event_loop(tornado.ioloop.IOLoop.current())
-            
-        else:
-            print("self.loop was None?! ------- ++++")
-            
-        try:
-            if self.loop != None:
-                #return self.loop
-                print("get_loop:  self.loop was not none, setting it as event loop")
-                asyncio.set_event_loop(self.loop)
-            else:
-                print("\nself.loop was NONE????-----------")
-                try:
-                    #self.loop = asyncio.get_running_loop()
-                    self.loop = tornado.ioloop.IOLoop.current()
-                    asyncio.set_event_loop(self.loop)
-                except Exception as ex:
-                    print("DARNIT, re-setting tornade event loop failed: " + str(ex))
-                    
-        except Exception as ex:
-            if self.DEBUG:
-                print("ERROR, using running Tornado event loop failed: " + str(ex))
-            self.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.loop)
-        """
-        
-    
-
-
-
-
-#
-#  PICAMERA CLASSES
-#
-
 
 
 class StreamyHandler(tornado.web.RequestHandler):
+
+    def initialize(self, api_handler):
+        self.api_handler = api_handler
 
     #@tornado.web.asynchronous
     @tornado.gen.coroutine
     def get(self,something):
         #print("in StreamyHandler get. something: " + str(something))
         #loop = tornado.ioloop.IOLoop.current()
-        global frame
-        global streaming
-        global viewers
+        #global frame
+        #global streaming
+        #global viewers
         
-        viewers += 1
+        self.api_handler.viewer_count += 1
         #print("viewer count: " + str(viewers))
-        self.viewer_count = viewers
+        viewer_count = self.api_handler.viewer_count
         #global new_frame
         #global candlecammy
         #if self.streaming:
@@ -2672,18 +2902,12 @@ class StreamyHandler(tornado.web.RequestHandler):
         my_boundary = "--jpgboundary"
         self.served_image_timestamp = time.time()
         
-        not_streaming_image_path = '/home/pi/.webthings/addons/candlecam/images/camera_not_available.jpg'
-        
-        not_streaming_image = b''
-        not_streaming_image_size = os.path.getsize(not_streaming_image_path)
-        with open(not_streaming_image_path, "rb") as file:
-            not_streaming_image = file.read()
-        
         #self.set_header('Cache-Control', 'no-cache, private')
         self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
         self.set_header('Pragma', 'no-cache')
         #self.set_header('Connection', 'close')
         self.set_header('Content-Type', 'multipart/x-mixed-replace;boundary=--jpgboundary')
+        self.set_header('Connection', 'close')
         self.flush()
         #counter = 0
         
@@ -2694,34 +2918,64 @@ class StreamyHandler(tornado.web.RequestHandler):
             #    print("that's enough of that________________")
             #    break
             try:
-                self.write(my_boundary + '\r\n')
-                self.write("Content-type: image/jpeg\r\n")
-                #self.write("Content-length: %s\r\n\r\n" % frame.getbuffer().nbytes)
-                #self.write(frame.getvalue())
-                if streaming:
-                    self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(frame))
-                    self.write(frame)
-                    mjpg_interval = .1
-                else:
-                    #self.write("Content-length: %s\r\n\r\n" % not_streaming_image_size)
-                    self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(not_streaming_image))
-                    self.write(not_streaming_image)
-                    mjpg_interval = 1
-                self.write('\r\n')
-                self.served_image_timestamp = time.time()
-                #print(str(self.served_image_timestamp))
-                self.flush()
-                #yield gen.Task(self.flush)
                 
-                if self.viewer_count < viewers - 1:
+                
+                if self.api_handler.viewer_count < viewer_count - (self.api_handler.maximum_connections - 1):
                     print("Too many viewers, stopping get loop: " + str(self.viewer_count))
+                    #self.flush()
                     break
                     
                 #if streaming == False:
                 #    print("streaming was set to disabled")
                 #    break
                     
-                yield tornado.gen.sleep(mjpg_interval)
+                
+                if self.served_image_timestamp + mjpg_interval < time.time():
+                    self.served_image_timestamp = time.time()
+                    
+                    self.write(my_boundary + '\r\n')
+                    self.write("Content-type: image/jpeg\r\n")
+                    #self.write("Content-length: %s\r\n\r\n" % frame.getbuffer().nbytes)
+                    #self.write(frame.getvalue())
+                    if self.api_handler.persistent_data['streaming']:
+                        #output = io.BytesIO()
+                        #self.api_handler.picam.capture(output, format='jpeg', resize=(640,480), use_video_port=True)
+                        #output.seek(0)
+                        #self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(output))
+                        #self.write(output.read())
+                        #output.close()
+                        self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(self.api_handler.frame))
+                        self.write(self.api_handler.frame)
+                        mjpg_interval = .1
+                    else:
+                        #self.write("Content-length: %s\r\n\r\n" % not_streaming_image_size)
+                        self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(self.api_handler.not_streaming_image))
+                        self.write(self.api_handler.not_streaming_image)
+                        mjpg_interval = 1
+                    self.write('\r\n')
+                    #self.served_image_timestamp = time.time()
+                    #print(str(self.served_image_timestamp))
+                
+                    #yield tornado.gen.Task(self.flush)
+                
+                    self.flush()
+                    
+                    #print(">")
+                    yield tornado.gen.sleep(0.05)
+                    #self.write(my_boundary)
+                    #self.write("Content-type: image/jpeg\r\n")
+                    #self.write("Content-length: %s\r\n\r\n" % len(img))
+                    #self.write(img)
+                    
+                    #yield tornado.gen.Task(self.flush)
+                    #print("x. yield self.flush")
+                    #self.flush()
+                    #yield tornado.gen.Task(self.flush)
+                else:
+                    #print("z")
+                    yield tornado.gen.sleep(0.01)
+                
+                
                 
                 
             except Exception as ex:
@@ -2747,6 +3001,12 @@ class StreamyHandler(tornado.web.RequestHandler):
     def on_finish(self):
         print("streamyhandler: in on_finish")
         pass
+        
+        
+        
+        
+        
+
     
     
 # Used to help other Candlecam instances easily detect this camera
@@ -2773,37 +3033,43 @@ class PingHandler(tornado.web.RequestHandler):
 # Returns a JPEG when /snapshot.jpg is get-requested
 class SnapshotHandler(tornado.web.RequestHandler):
 
+    def initialize(self, api_handler):
+        self.api_handler = api_handler
+
     #@tornado.web.asynchronous
     @tornado.gen.coroutine
     def get(self):
         print("in SnapshotHandler get")
     
-        global frame
-        global streaming
+        #global frame
+        #global streaming
         global taking_a_photo_countdown
         
-        not_streaming_image_path = '/home/pi/.webthings/addons/candlecam/images/camera_not_available.jpg'
-        not_streaming_image = b''
+        #not_streaming_image_path = '/home/pi/.webthings/addons/candlecam/images/camera_not_available.jpg'
+        #not_streaming_image = b''
         
-        self.clear()
-        
+        #self.clear()
+        """
         snapshot = tracemalloc.take_snapshot()
         top_stats = snapshot.statistics('lineno')
         print("[ Top 10 ]")
         for stat in top_stats[:10]:
             print(stat)
-            
+        """
+        
         if taking_a_photo_countdown == 0:
-            if streaming == False:
+            if self.api_handler.persistent_data['streaming'] == False:
                 self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
                 self.set_header('Pragma', 'no-cache')
                 #self.set_header('Connection', 'close')
                 self.set_header("Content-type",  "image/jpeg")
                 
                 #not_streaming_image_size = os.path.getsize(not_streaming_image_path)
-                with open(not_streaming_image_path, "rb") as file:
-                    not_streaming_image = file.read()
-                    self.write(not_streaming_image)
+                #with open(not_streaming_image_path, "rb") as file:
+                #    not_streaming_image = file.read()
+                #    self.write(not_streaming_image)
+                #self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(self.api_handler.not_streaming_image))
+                self.write(self.api_handler.not_streaming_image)
                 
                 self.flush()
                 yield tornado.gen.sleep(.1)
@@ -2815,12 +3081,12 @@ class SnapshotHandler(tornado.web.RequestHandler):
                 self.set_header("Content-type",  "image/jpeg")
                 taking_a_photo_countdown = 60
                 yield tornado.gen.sleep(2.1)
-                self.write(frame)
+                self.write(self.api_handler.frame)
                 self.flush()
                 yield tornado.gen.sleep(.1)
                 
         else:
-            self.clear()
+            #self.clear()
             self.set_status(500)
         
             self.flush()
@@ -2858,6 +3124,12 @@ class SnapshotHandler(tornado.web.RequestHandler):
     def on_finish(self):
         print("snapshot in on_finish")
         pass
+
+
+
+
+
+
 
 
 
