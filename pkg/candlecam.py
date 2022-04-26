@@ -850,7 +850,8 @@ class CandlecamAPIHandler(APIHandler):
     def run_picam(self):
         if self.DEBUG:
             print("in run_picam")
-            
+            print("hires: " + str(self.hires))
+            print("portrait_mode: " + str(self.portrait_mode))
             
         
         while self.running:
@@ -858,6 +859,9 @@ class CandlecamAPIHandler(APIHandler):
             time.sleep(.1)
             
             if self.picam == None and self.persistent_data['streaming']:
+                if self.DEBUG:
+                    print("\n\nSTARTING PICAMERA")
+                
                 stream = io.BytesIO()
         
                 resolution = (640,480)
@@ -869,7 +873,8 @@ class CandlecamAPIHandler(APIHandler):
                     else:
                         resolution = (480,640)
         
-                print("- resolution: " + str(resolution))
+                if self.DEBUG:
+                    print("- resolution: " + str(resolution))
         
                 with picamera.PiCamera(resolution=resolution, framerate=10) as self.picam:
                     self.picam.exposure_mode = 'auto'

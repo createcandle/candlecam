@@ -264,6 +264,13 @@
                     this.image_load_error = false;
                     document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-stream-error');
                     //document.getElementById('extension-candlecam-loading').classList.add('extension-candlecam-hidden');
+                    
+                    if(candlecam_picture_el.width < candlecam_picture_el.height){
+                        document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-portrait');
+                    }
+                    else{
+                        document.getElementById('extension-candlecam-content').classList.add('extension-candlecam-portrait');
+                    }
                 });
                 
                 candlecam_picture_el.addEventListener('change', (event) => {
@@ -312,11 +319,10 @@
                 
                 
                 this.show_list(body['photos']);
-                
-                const tijmen_is_tof = true;
+        
                 
                 if(body['camera_available'] == false){
-                    if(body['gateways'].length == 0 || tijmen_is_tof){
+                    if(body['gateways'].length == 0){
                         console.log("This controller has no camera attached, and it also detected no other Candle cam instances");
                         document.getElementById('extension-candlecam-no-cameras-detected').classList.remove('extension-candlecam-hidden');
                         document.getElementById('extension-candlecam-picture-holder').classList.add('extension-candlecam-hidden');
