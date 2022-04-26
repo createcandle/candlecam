@@ -149,8 +149,11 @@ class CandlecamAPIHandler(APIHandler):
             #global streaming
             #streaming = True
             
-            global taking_a_photo_countdown
-            taking_a_photo_countdown = 0
+            #global taking_a_photo_countdown
+            #taking_a_photo_countdown = 0
+            self.taking_a_photo_countdown = 0
+            
+            
             
             # RESPEAKER
             self.has_respeaker_hat = False
@@ -235,7 +238,7 @@ class CandlecamAPIHandler(APIHandler):
 
             
             # Matrix
-            self.copy_saved_files_to_matrix = True
+            self.send_to_matrix = True
             
             #self.volume_level = 90
             
@@ -246,7 +249,6 @@ class CandlecamAPIHandler(APIHandler):
             #self.terminated = False
             
             self.take_a_photo = False
-            taking_a_photo_countdown = 0
             self.taking_a_photo_countdown_start = 60
             
             
@@ -578,7 +580,7 @@ class CandlecamAPIHandler(APIHandler):
             
             #self.dash_file_path = os.path.join(self.addon_path, 'stream', 'index.mpd')
 
-            self.matrix_drop_dir = os.path.join(self.user_profile['addonsDir'], 'voco','sendme')
+            self.matrix_drop_dir = os.path.join(self.user_profile['dataDir'], 'voco','sendme')
             
             self.webthings_addon_dir = os.path.join(self.user_profile['addonsDir'], 'thing-url-adapter')
             
@@ -690,6 +692,9 @@ class CandlecamAPIHandler(APIHandler):
 
         """
         
+        # Do an initial network scan
+        self.gateways_ip_dict = self.network_scan()
+        
         
         # Create adapter
         try:
@@ -766,7 +771,9 @@ class CandlecamAPIHandler(APIHandler):
         if os.path.isdir(self.matrix_drop_dir):
             if self.DEBUG:
                 print("matrix drop-off dir exists")
-        
+        else:
+            if self.DEBUG:
+                print("matrix drop-off dir does not exist")
         
         # Start the internal clock
         if self.DEBUG:
@@ -912,7 +919,7 @@ class CandlecamAPIHandler(APIHandler):
                                         binary_file.write(self.frame)
                             
                                     # We end up here if the "shortcut" option was used to quickly save a snapshot from the local camera
-                                    if self.copy_saved_files_to_matrix:
+                                    if self.send_to_matrix:
                                         if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
                                             if self.DEBUG:
                                                 print("sending file to Matrix via Voco")
@@ -1185,7 +1192,7 @@ class CandlecamAPIHandler(APIHandler):
                             binary_file.write(frame)
                             
                         # We end up here if the "shortcut" option was used to quickly save a snapshot from the local camera
-                        if self.copy_saved_files_to_matrix:
+                        if self.send_to_matrix:
                             if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
                                 if self.DEBUG:
                                     print("sending file to Matrix via Voco")
@@ -1609,6 +1616,13 @@ class CandlecamAPIHandler(APIHandler):
         #    if self.DEBUG:
         #        print("-Interval preference was in config: " + str(self.interval))
 
+
+
+        if 'Send snapshots to Matrix messenger' in config:
+            self.send_to_matrix = bool(config['Send snapshots to Matrix messenger'])
+            if self.DEBUG:
+                print("-Send snapshots to Matrix messenger preference was in config: " + str(self.send_to_matrix))
+
         if 'Send snapshots to printer' in config:
             self.send_snapshots_to_printer = bool(config['Send snapshots to printer'])
             if self.DEBUG:
@@ -1725,6 +1739,8 @@ class CandlecamAPIHandler(APIHandler):
 
 
     def try_sending_to_printer(self, filename):
+        if self.DEBUG:
+            print("in try_sending_to_printer")
         try:
             if self.send_snapshots_to_printer:
                 if self.DEBUG:
@@ -2077,9 +2093,9 @@ class CandlecamAPIHandler(APIHandler):
         if self.DEBUG:
             print("\nHERE\nin thingy_take_snapshot. state: " + str(state))
         if state:
-            global taking_a_photo_countdown
-            if taking_a_photo_countdown == 0:
-                taking_a_photo_countdown = self.taking_a_photo_countdown_start
+            #global taking_a_photo_countdown
+            if self.taking_a_photo_countdown == 0:
+                self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
             #self.grab_snapshots(self.own_mjpeg_url)
             # Switch thingy snapshot button back to off        
     
@@ -2132,10 +2148,10 @@ class CandlecamAPIHandler(APIHandler):
                 if self.DEBUG:
                     print("target mjpeg stream url is own mjpeg stream url. Taking shortcut.")
                 #self.take_a_photo = True
-                global taking_a_photo_countdown
+                #global taking_a_photo_countdown
                 
-                if taking_a_photo_countdown == 0:
-                    taking_a_photo_countdown = self.taking_a_photo_countdown_start
+                if self.taking_a_photo_countdown == 0:
+                    self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
                 result = True
             
             else:
@@ -2208,10 +2224,10 @@ class CandlecamAPIHandler(APIHandler):
                     print("target snapshot url is own snapshot url. Taking shortcut.")
                 #self.take_a_photo = True
                 
-                global taking_a_photo_countdown
+                #global taking_a_photo_countdown
                 
-                if taking_a_photo_countdown == 0:
-                    taking_a_photo_countdown = self.taking_a_photo_countdown_start
+                if self.taking_a_photo_countdown == 0:
+                    self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
                 return True
             
             else:
@@ -2235,9 +2251,11 @@ class CandlecamAPIHandler(APIHandler):
                         print("snapshot written to disk succesfully?: " + str(os.path.isfile(file_path)))
                 
                     # Also send to Matrix
-                    if self.copy_saved_files_to_matrix:
+                    if self.send_to_matrix:
                         if self.DEBUG:
                             print("- sending snapshot to Matrix is allowed")
+                            print("- file to send: " + str(file_path))
+                            print("- self.matrix_drop_dir: " + str(self.matrix_drop_dir))
                         if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
                             if self.DEBUG:
                                 print("- Voco's Matrix drop-off dir exists")
@@ -2248,6 +2266,9 @@ class CandlecamAPIHandler(APIHandler):
                         else:
                             if self.DEBUG:
                                 print("matrix drop-off dir doesn't exist, or the snapshot wasn't saved")
+                
+                    # Print to bluetooth printer if so desired
+                    self.try_sending_to_printer(filename)
                 
                     return True
         except Exception as ex:
@@ -2428,28 +2449,28 @@ class CandlecamAPIHandler(APIHandler):
             self.previous_politeness = self.persistent_data['politeness']
             self.thingy.properties["politeness"].value.notify_of_external_update(bool(self.persistent_data['politeness']))
         
-        global taking_a_photo_countdown
+        #global taking_a_photo_countdown
         
-        if taking_a_photo_countdown > 0:
+        if self.taking_a_photo_countdown > 0:
             if self.DEBUG:
-                print("[o] " + str(taking_a_photo_countdown))
+                print("[o] " + str(self.taking_a_photo_countdown))
             
-            if taking_a_photo_countdown == (self.taking_a_photo_countdown_start - 1):
+            if self.taking_a_photo_countdown == (self.taking_a_photo_countdown_start - 1):
                 self.move_cover('open')
             
                 self.thingy.properties["snapshot"].value.notify_of_external_update(True)
                 
-            if taking_a_photo_countdown == (self.taking_a_photo_countdown_start - 20):
+            if self.taking_a_photo_countdown == (self.taking_a_photo_countdown_start - 20):
                 if self.DEBUG:
                     print("\nSNAPSHOT COUNTDOWN HALFWAY, TAKING PHOTO")
                 self.take_a_photo = True
                 
-            if taking_a_photo_countdown == 1:
+            if self.taking_a_photo_countdown == 1:
                 if self.persistent_data['politeness']:
                     self.move_cover('closed')
                 self.thingy.properties["snapshot"].value.notify_of_external_update(False)
                 
-            taking_a_photo_countdown -= 1
+            self.taking_a_photo_countdown -= 1
         
         #print("in update_button")
         if self.pressed:
@@ -3052,7 +3073,7 @@ class SnapshotHandler(tornado.web.RequestHandler):
     
         #global frame
         #global streaming
-        global taking_a_photo_countdown
+        #global taking_a_photo_countdown
         
         #not_streaming_image_path = '/home/pi/.webthings/addons/candlecam/images/camera_not_available.jpg'
         #not_streaming_image = b''
@@ -3066,7 +3087,7 @@ class SnapshotHandler(tornado.web.RequestHandler):
             print(stat)
         """
         
-        if taking_a_photo_countdown == 0:
+        if self.api_handler.taking_a_photo_countdown == 0:
             if self.api_handler.persistent_data['streaming'] == False:
                 self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
                 self.set_header('Pragma', 'no-cache')
@@ -3088,7 +3109,7 @@ class SnapshotHandler(tornado.web.RequestHandler):
                 self.set_header('Pragma', 'no-cache')
                 #self.set_header('Connection', 'close')
                 self.set_header("Content-type",  "image/jpeg")
-                taking_a_photo_countdown = 60
+                self.api_handler.taking_a_photo_countdown = 60
                 yield tornado.gen.sleep(2.1)
                 self.write(self.api_handler.frame)
                 self.flush()

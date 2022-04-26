@@ -265,10 +265,15 @@
                     document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-stream-error');
                     //document.getElementById('extension-candlecam-loading').classList.add('extension-candlecam-hidden');
                     
-                    if(candlecam_picture_el.width < candlecam_picture_el.height){
+                    //console.log("candlecam_picture_el.width: ", candlecam_picture_el.width);
+                    //console.log("candlecam_picture_el.height: ", candlecam_picture_el.height);
+                    
+                    if(candlecam_picture_el.width > candlecam_picture_el.height){
+                        //console.log("landscape");
                         document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-portrait');
                     }
                     else{
+                        //console.log("portrait");
                         document.getElementById('extension-candlecam-content').classList.add('extension-candlecam-portrait');
                     }
                 });

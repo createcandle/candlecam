@@ -30,6 +30,7 @@
 	  "Portrait mode": false,
 	  "High resolution": false,
       "Data retention days": 2,
+	  "Send snapshots to Matrix messenger": true,
 	  "Send snapshots to printer": false,
       "Debug": false
     },
@@ -58,6 +59,10 @@
           ],
           "type": "string"
         },
+        "Send snapshots to Matrix messenger": {
+          "description": "If you are also using the Voco addon and have created a Matrix messenger account with it, then you can receive snapshots from the camera on your mobile devices. If you are using Candle Camera as a smart doorbell, then you could receive a photo whenever someone presses the doorbell.",
+          "type": "boolean"
+        },
         "Send snapshots to printer": {
           "description": "If enabled, and if a (Bluetooth) printer is connected, then newly saved snapshots will also be sent to the printer. Please discuss enabling this feature with people who frequent your home.",
           "type": "boolean"
@@ -71,7 +76,7 @@
     }
   },
   "short_name": "candlecam",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "web_accessible_resources": [
     "css/*.css",
     "images/*.svg",
