@@ -1583,7 +1583,7 @@ class CandlecamAPIHandler(APIHandler):
         
                 
         if 'Portrait mode' in config:
-            self.portrait_mode = bool(config['Portait mode'])
+            self.portrait_mode = bool(config['Portrait mode'])
             if self.DEBUG:
                 print("-Portait mode preference was in config: " + str(self.portrait_mode))
 
@@ -1679,7 +1679,7 @@ class CandlecamAPIHandler(APIHandler):
             
             self.busy_doing_network_scan = False
             
-            if len(gateways_ip_dict.keys() == 0):
+            if len(gateways_ip_dict.keys()) == 0:
                 last_network_scan_time = 0
                 
             return gateways_ip_dict
@@ -1722,7 +1722,11 @@ class CandlecamAPIHandler(APIHandler):
     def try_sending_to_printer(self, filename):
         try:
             if self.send_snapshots_to_printer:
+                if self.DEBUG:
+                    print("should send snapshot to printer: " + str(filename))
                 if self.check_photo_printer():
+                    if self.DEBUG:
+                        print("- Paired bluetooth printer detected")
                     from_filename = os.path.join(self.data_photos_dir_path, filename)
                     if os.path.isfile(from_filename):
                         if os.path.isdir(self.external_picture_drop_dir):
