@@ -41,7 +41,7 @@
           "type": "boolean"
         },
         "High resolution": {
-          "description": "Normally the camera streams at 640x480 pixels to enable streaming to multiple devices at once. If you enable high resolution mode the stream will be 720p (1280x720 pixels), but at the cost of only live streaming to one device at a time. You can still take snapshots from multiple devices, only the live stream is affected.",
+          "description": "If this controller has a camera, then this determines at what level of visual detail the stream is sent. Normally the camera streams at 640x480 pixels to enable streaming to multiple devices at once. If you enable high resolution mode the stream will be 720p (1280x720 pixels), but at the cost of only live streaming to one device at a time.",
           "type": "boolean"
         },
         "Data retention days": {
