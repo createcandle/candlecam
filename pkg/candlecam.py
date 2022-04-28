@@ -2969,6 +2969,11 @@ class StreamyHandler(tornado.web.RequestHandler):
         #global frame
         #global streaming
         #global viewers
+        try:
+            token = self.request.headers.get('Authorization')
+            print("auth token: " + str(token))
+        except Exception as ex:
+            print("error extracting authorization token: " + str(ex))
         
         self.api_handler.viewer_count += 1
         #print("viewer count: " + str(viewers))
@@ -3250,7 +3255,7 @@ class CandlecamAdapter(Adapter):
         
         # Create the candlecam device
         try:
-            print("adapter: creating device with id: " + str(self.api_handler.thingy_id))
+            #print("adapter: creating device with id: " + str(self.api_handler.thingy_id))
             self.candlecam_device = CandlecamDevice(self) # self.audio_output_options  # , self.api_handler.thingy_id
             self.handle_device_added(self.candlecam_device)
             if self.DEBUG:
@@ -3332,7 +3337,7 @@ class CandlecamDevice(Device):
                                     },
                                     False)
                                 
-                if self.voco_installed and self.never_send_to_matrix == False:
+                if self.api_handler.voco_installed and self.api_handler.never_send_to_matrix == False:
                     self.properties["send_to_matrix"] = CandlecamProperty(
                                         self,
                                         "send_to_matrix",
