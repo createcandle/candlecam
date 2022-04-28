@@ -116,12 +116,12 @@ class CandlecamAPIHandler(APIHandler):
 
     def __init__(self, verbose=False):
         """Initialize the object."""
-        print("INSIDE API HANDLER INIT")
+        #print("INSIDE API HANDLER INIT")
         
         self.addon_name = 'candlecam'
         #self.server = 'http://127.0.0.1:8080'
         
-        self.DEBUG = True # TODO: disable debugging by default
+        self.DEBUG = False
         self.ready = False
         self.running = True
         
@@ -201,6 +201,7 @@ class CandlecamAPIHandler(APIHandler):
             self.hires = False
             self.maximum_connections = 2
             
+            
             # PRINT
             self.send_snapshots_to_printer = False
             self.photo_printer_available = False
@@ -238,7 +239,8 @@ class CandlecamAPIHandler(APIHandler):
 
             
             # Matrix
-            self.send_to_matrix = True
+            self.never_send_to_matrix = True
+            self.voco_installed = False
             
             #self.volume_level = 90
             
@@ -362,7 +364,7 @@ class CandlecamAPIHandler(APIHandler):
             elif 'detected=0' in check_camera_result:
                 if self.DEBUG:
                     print("\nPi camera is supported, but was not detected\n")
-                    self.adapter.send_pairing_prompt("No camera detected")
+                    #self.adapter.send_pairing_prompt("No camera detected")
             else:
                 if self.DEBUG:
                     print("\nPi camera seems good to go\n")
@@ -508,6 +510,8 @@ class CandlecamAPIHandler(APIHandler):
                     self.persistent_data['thing_server_id'] = randomWord(4)
             if 'data_retention_days' not in self.persistent_data:    
                 self.persistent_data['data_retention_days'] = 2
+            if 'send_to_matrix' not in self.persistent_data:
+                self.persistent_data['send_to_matrix'] = True
             
             if self.DEBUG:
                 print("\n\nself.persistent_data: " + str(self.persistent_data))
@@ -520,6 +524,7 @@ class CandlecamAPIHandler(APIHandler):
     
             #self.streaming = self.persistent_data['streaming']
             self.previous_streaming_state = self.persistent_data['streaming']
+            self.previous_send_to_matrix_state = self.persistent_data['send_to_matrix']
             self.previous_ringtone = self.persistent_data['ringtone']
             self.previous_ringtone_volume = self.persistent_data['ringtone_volume']
             self.previous_led_color = self.persistent_data['led_color']
@@ -580,9 +585,11 @@ class CandlecamAPIHandler(APIHandler):
             
             #self.dash_file_path = os.path.join(self.addon_path, 'stream', 'index.mpd')
 
+            self.webthings_addon_dir = os.path.join(self.user_profile['addonsDir'], 'thing-url-adapter')
+            self.voco_dir = os.path.join(self.user_profile['addonsDir'], 'voco')
             self.matrix_drop_dir = os.path.join(self.user_profile['dataDir'], 'voco','sendme')
             
-            self.webthings_addon_dir = os.path.join(self.user_profile['addonsDir'], 'thing-url-adapter')
+            
             
             self.not_streaming_image = os.path.join(self.addon_path, 'images','camera_not_available.jpg')
             
@@ -629,6 +636,9 @@ class CandlecamAPIHandler(APIHandler):
                 if self.DEBUG:
                     print(self.media_stream_dir_path + " directory did not exist yet, creating it now")
                 os.mkdir( self.media_stream_dir_path )
+            
+            if os.path.isdir(self.voco_dir):
+                self.voco_installed = True
             
         except Exception as ex:
             print("Error making photos directory: " + str(ex))
@@ -901,7 +911,9 @@ class CandlecamAPIHandler(APIHandler):
                             stream.seek(0)
                             self.frame = stream.read()
                     
-                            if self.take_a_photo: # TODO: or if continous periodic recording should be active, perhaps while in security mode?
+                            if self.take_a_photo: 
+                                # TODO: or if continous periodic recording should be active, perhaps while in security mode?
+                                # TODO: is this too blocking?
                                 if self.DEBUG:
                                     print("\nself.take_a_photo was True.")
                                 self.take_a_photo = False
@@ -918,15 +930,8 @@ class CandlecamAPIHandler(APIHandler):
                                         #print("saving jpg as mjpeg")
                                         binary_file.write(self.frame)
                             
-                                    # We end up here if the "shortcut" option was used to quickly save a snapshot from the local camera
-                                    if self.send_to_matrix:
-                                        if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
-                                            if self.DEBUG:
-                                                print("sending file to Matrix via Voco")
-                                            drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + socket.gethostname().lower() + '_' + filename)
-                                            os.system('cp ' + file_path + ' ' + drop_file_path)
-                    
-                                    self.try_sending_to_printer(filename)
+                                    # share snapshot with matrix or print to bluetooth printer if allowed and available
+                                    self.try_sharing(filename)
                     
                     
                         # reset stream for next frame
@@ -1307,7 +1312,7 @@ class CandlecamAPIHandler(APIHandler):
 
     def politeness_change(self,politeness_state):
         if self.DEBUG:
-            print("in politeness, state changes to: " + str(politeness_state))
+            print("in politeness_change, state changes to: " + str(politeness_state))
         self.persistent_data['politeness'] = politeness_state
         self.save_persistent_data()
         
@@ -1320,6 +1325,17 @@ class CandlecamAPIHandler(APIHandler):
         except Exception as ex:
             print("Error setting politeness_state on thing: " + str(ex))
 
+        
+    def send_to_matrix_change(self,state):
+        if self.DEBUG:
+            print("in send_to_matrix_change, state changes to: " + str(state))
+        self.persistent_data['send_to_matrix'] = state
+        self.save_persistent_data()
+
+        try:
+            self.adapter.candlecam_device.properties["send_to_matrix"].update(politeness_state)
+        except Exception as ex:
+            print("Error setting politeness_state on thing: " + str(ex))
         
 
     def volume_change(self,ringtone_volume):
@@ -1618,10 +1634,10 @@ class CandlecamAPIHandler(APIHandler):
 
 
 
-        if 'Send snapshots to Matrix messenger' in config:
-            self.send_to_matrix = bool(config['Send snapshots to Matrix messenger'])
+        if 'Never send snapshots to Matrix messenger' in config:
+            self.never_send_to_matrix = bool(config['Never send snapshots to Matrix messenger'])
             if self.DEBUG:
-                print("-Send snapshots to Matrix messenger preference was in config: " + str(self.send_to_matrix))
+                print("-Never send snapshots to Matrix messenger preference was in config: " + str(self.never_send_to_matrix))
 
         if 'Send snapshots to printer' in config:
             self.send_snapshots_to_printer = bool(config['Send snapshots to printer'])
@@ -1694,12 +1710,13 @@ class CandlecamAPIHandler(APIHandler):
         
                 self.gateways_ip_dict = gateways_ip_dict
             except Exception as ex:
-                print("Error in network_scan: " + str(ex))
+                if self.DEBUG:
+                    print("Error in network_scan: " + str(ex))
             
             self.busy_doing_network_scan = False
             
             if len(gateways_ip_dict.keys()) == 0:
-                last_network_scan_time = 0
+                self.last_network_scan_time = 0
                 
             return gateways_ip_dict
         
@@ -1738,18 +1755,33 @@ class CandlecamAPIHandler(APIHandler):
         return False
 
 
-    def try_sending_to_printer(self, filename):
+    def try_sharing(self, filename):
         if self.DEBUG:
-            print("in try_sending_to_printer")
+            print("in try_sharing")
         try:
-            if self.send_snapshots_to_printer:
-                if self.DEBUG:
-                    print("should send snapshot to printer: " + str(filename))
-                if self.check_photo_printer():
+            
+            from_filename = os.path.join(self.data_photos_dir_path, filename)
+            if os.path.isfile(from_filename):
+                
+                # Copy into matrix drop-off dir, if it exists
+                if self.persistent_data['send_to_matrix'] == True and self.never_send_to_matrix == False:
+                    if os.path.isdir(self.matrix_drop_dir):
+                        if self.DEBUG:
+                            print("Snapshot copied to Voco's matrix drop-off directory")
+                        drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + filename)
+                        os.system('cp ' + from_filename + ' ' + drop_file_path)
+                    else:
+                        if self.DEBUG:
+                            print("cannot share snapshot: Voco matrix drop-off directory did not exist (yet)")
+            
+                # Print if Peripage printer is available
+                if self.send_snapshots_to_printer:
                     if self.DEBUG:
-                        print("- Paired bluetooth printer detected")
-                    from_filename = os.path.join(self.data_photos_dir_path, filename)
-                    if os.path.isfile(from_filename):
+                        print("should send snapshot to printer: " + str(filename))
+                    if self.check_photo_printer():
+                        if self.DEBUG:
+                            print("- Paired bluetooth printer detected")
+                    
                         if os.path.isdir(self.external_picture_drop_dir):
                             to_filename = os.path.join(self.external_picture_drop_dir, filename)
                             copy_command = 'cp -n ' + str(from_filename) + ' ' + str(to_filename)
@@ -1759,12 +1791,16 @@ class CandlecamAPIHandler(APIHandler):
                         else:
                             if self.DEBUG:
                                 print("photo drop dir (no longer) exists?")
+                    
                     else:
                         if self.DEBUG:
-                            print("Could not send to printer: filename not found")
-                else:
-                    if self.DEBUG:
-                        print("Could not send to printer: no bluetooth printer paired?")
+                            print("Could not send to printer: no bluetooth printer paired?")
+            
+            else:
+                if self.DEBUG:
+                    print("Could not try to share: file not found")
+                
+            
         except Exception as ex:
             print("Error while sending to photo printer: " + str(ex))
 
@@ -2195,13 +2231,10 @@ class CandlecamAPIHandler(APIHandler):
                                 if self.DEBUG:
                                     print("looking loops required: " + str(looking_loops_counter))
                             
-                                # Copy into matrix drop-off dir, if it exists
-                                if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
-                                    drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + filename)
-                                    os.system('cp ' + file_path + ' ' + drop_file_path)
+                                
                             
-                                # Print to bluetooth printer if so desired
-                                self.try_sending_to_printer(filename)
+                                # Send to Matrix or Print to bluetooth printer if so desired
+                                self.try_sharing(filename)
                             
                                 break
                             
@@ -2251,7 +2284,7 @@ class CandlecamAPIHandler(APIHandler):
                         print("snapshot written to disk succesfully?: " + str(os.path.isfile(file_path)))
                 
                     # Also send to Matrix
-                    if self.send_to_matrix:
+                    if self.never_send_to_matrix == False:
                         if self.DEBUG:
                             print("- sending snapshot to Matrix is allowed")
                             print("- file to send: " + str(file_path))
@@ -2268,7 +2301,7 @@ class CandlecamAPIHandler(APIHandler):
                                 print("matrix drop-off dir doesn't exist, or the snapshot wasn't saved")
                 
                     # Print to bluetooth printer if so desired
-                    self.try_sending_to_printer(filename)
+                    self.try_sharing(filename)
                 
                     return True
         except Exception as ex:
@@ -2448,6 +2481,11 @@ class CandlecamAPIHandler(APIHandler):
         if self.previous_politeness != self.persistent_data['politeness']:
             self.previous_politeness = self.persistent_data['politeness']
             self.thingy.properties["politeness"].value.notify_of_external_update(bool(self.persistent_data['politeness']))
+        
+        if self.previous_send_to_matrix != self.persistent_data['send_to_matrix']:
+            self.previous_send_to_matrix = self.persistent_data['send_to_matrix']
+            self.thingy.properties["send_to_matrix"].value.notify_of_external_update(bool(self.persistent_data['send_to_matrix']))
+        
         
         #global taking_a_photo_countdown
         
@@ -2803,6 +2841,17 @@ class CandlecamAPIHandler(APIHandler):
                      }))
         
         
+        
+            if self.voco_installed and self.never_send_to_matrix == False:
+                self.thingy.add_property(
+                    webthing.Property(self.thingy,
+                         'send_to_matrix',
+                         Value(self.persistent_data['send_to_matrix'], lambda v: self.send_to_matrix_change(v)),
+                         metadata={
+                             'title': 'Sharing with Matrix',
+                             'type': 'boolean',
+                             'description': 'If snapshot should also be shared over Matrix Messenger through the Voco addon',
+                         }))
         
         
             # Watch for button press events, but only if a respeaker hat is present
@@ -3283,6 +3332,16 @@ class CandlecamDevice(Device):
                                     },
                                     False)
                                 
+                if self.voco_installed and self.never_send_to_matrix == False:
+                    self.properties["send_to_matrix"] = CandlecamProperty(
+                                        self,
+                                        "send_to_matrix",
+                                        {
+                                            'label': "Sharing with Matrix",
+                                            'type': 'boolean'
+                                        },
+                                        self.api_handler.persistent_data['send_to_matrix'])
+                                
 
 
             if self.api_handler.has_respeaker_hat:
@@ -3422,6 +3481,9 @@ class CandlecamProperty(Property):
                 time.sleep(2)
                 self.update(False)
                 
+            elif self.name == 'send_to_matrix':
+                self.device.api_handler.send_to_matrix_change(bool(value))
+                
             elif self.name == 'politeness':
                 self.device.api_handler.politeness_change(bool(value))
                 
@@ -3551,11 +3613,11 @@ def arpa_detect_gateways(quick=True):
         
         result = subprocess.run(command, shell=True, universal_newlines=True, stdout=subprocess.PIPE) #.decode())
         for line in result.stdout.split('\n'):
-            print("arp -a line: " + str(line))
+            #print("arp -a line: " + str(line))
             if len(line) > 10:
                 
                 if quick and "<incomplete>" in line:
-                    print("skipping incomplete ip")
+                    #print("skipping incomplete ip")
                     continue
                     
                 #print("--useable")
@@ -3563,10 +3625,10 @@ def arpa_detect_gateways(quick=True):
 
                 try:
                     ip_address_list = re.findall(r'(?:\d{1,3}\.)+(?:\d{1,3})', str(line))
-                    print("ip_address_list = " + str(ip_address_list))
+                    #print("ip_address_list = " + str(ip_address_list))
                     ip_address = str(ip_address_list[0])
                     if not valid_ip(ip_address):
-                        print("not a valid IP address")
+                        #print("not a valid IP address")
                         continue
                         
                     #print("found valid IP address: " + str(ip_address))
@@ -3576,9 +3638,9 @@ def arpa_detect_gateways(quick=True):
                         #html = ""
                         try:
                             response = s.get(test_url_a, allow_redirects=True, timeout=4)
-                            print("response code: " + str(response.status_code))
+                            #print("response code: " + str(response.status_code))
                             if response.status_code == 200:
-                                print("OK")
+                                #print("OK")
                                 if ip_address not in gateway_list:
                                     gateway_list.append(ip_address)
                                     gateway_dict[ ip_address ] = ip_address

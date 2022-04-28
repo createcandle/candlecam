@@ -12,6 +12,7 @@
             this.saved_photos_list = []
             this.camera_available = false;
 			this.connection_check_interval = 5;
+            this.current_stream_url = "";
             
             this.image_load_error = false
             
@@ -208,524 +209,551 @@
 
 
         show() {
+            
+            
+            
     		if(this.content == ''){
+                //console.log('candlecam: no content fetched yet, aborting show');
     			return;
     		}
-    		else{
-    			this.view.innerHTML = this.content;
-    		}	
 	        
-    		const clock_element = document.getElementById('extension-candlecam-clock');
-    		//const pre = document.getElementById('extension-candlecam-response-data');
-    		const thing_list = document.getElementById('extension-candlecam-thing-list');
+            setTimeout(() => {
+                // This timeout is because hide() seems to be called after show() if the user click on the main menu button while already viewing the addon.
+    			this.view.innerHTML = this.content;
+                
+        		//const pre = document.getElementById('extension-candlecam-response-data');
+        		const thing_list = document.getElementById('extension-candlecam-thing-list');
 
-            //const camera_source_select = document.getElementById('extension-candlecam-camera-source-select');
-            //const push_button_select = document.getElementById('extension-candlecam-push-button-select');
-            //const door_release_select = document.getElementById('extension-candlecam-door-release-select');
+                //const camera_source_select = document.getElementById('extension-candlecam-camera-source-select');
+                //const push_button_select = document.getElementById('extension-candlecam-push-button-select');
+                //const door_release_select = document.getElementById('extension-candlecam-door-release-select');
 
-
-    		//pre.innerText = "";
+            
+        		//pre.innerText = "";
 		
-    		var this_object = this;
+        		var this_object = this;
 		
-            //console.log(API);
-            
-            
-            
-            var last_selected_stream = localStorage.getItem('candlecam_last_selected_stream');
-            //console.log('background color from local storage: ', color);
-            
-            const candlecam_picture_el = document.getElementById('extension-candlecam-picture');
-            if(candlecam_picture_el != null){
+                //console.log(API);
             
                 try{
-                    if (last_selected_stream != '' && last_selected_stream != null) {
-                        this.current_stream_url = last_selected_stream;
-                        //console.log('found last selected stream in local storage');
-                        candlecam_picture_el.src = last_selected_stream;
+                
+                    var last_selected_stream = localStorage.getItem('candlecam_last_selected_stream');
+            
+                    const candlecam_picture_el = document.getElementById('extension-candlecam-picture');
+                
+                    if(candlecam_picture_el != null){
+            
+                        try{
+                            if (last_selected_stream != '' && last_selected_stream != null &&  typeof last_selected_stream != 'undefined') {
+                                //console.log('found last selected stream in local storage: ', last_selected_stream);
+                                this.current_stream_url = last_selected_stream;
+                                candlecam_picture_el.src = last_selected_stream;
                         
-                    }
-                }
-                catch (e) {
-                    console.log("CAUGHT IT: ", e);
-                }
+                            }
+                        }
+                        catch (e) {
+                            console.log("CAUGHT IT: ", e);
+                        }
                 
                 
+                        candlecam_picture_el.addEventListener('error', (event) => {
+                            //console.log("There was an error loading the image src: ", event);
+                            //candlecam_picture_el.src = "";
+                            this.image_load_error = true;
+                            document.getElementById('extension-candlecam-content').classList.add('extension-candlecam-stream-error');
+                        });
                 
-                candlecam_picture_el.addEventListener('error', (event) => {
-                    //console.log("There was an error loading the image src: ", event);
-                    //candlecam_picture_el.src = "";
-                    this.image_load_error = true;
-                    document.getElementById('extension-candlecam-content').classList.add('extension-candlecam-stream-error');
-                });
-                
-                candlecam_picture_el.addEventListener('load', (event) => {
-                    //console.log("image src loaded succesfully");
-                    this.image_load_error = false;
-                    document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-stream-error');
-                    //document.getElementById('extension-candlecam-loading').classList.add('extension-candlecam-hidden');
+                        candlecam_picture_el.addEventListener('load', (event) => {
+                            //console.log("image src loaded succesfully");
+                            this.image_load_error = false;
+                            document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-stream-error');
+                            //document.getElementById('extension-candlecam-loading').classList.add('extension-candlecam-hidden');
                     
-                    //console.log("candlecam_picture_el.width: ", candlecam_picture_el.width);
-                    //console.log("candlecam_picture_el.height: ", candlecam_picture_el.height);
+                            //console.log("candlecam_picture_el.width: ", candlecam_picture_el.width);
+                            //console.log("candlecam_picture_el.height: ", candlecam_picture_el.height);
                     
-                    if(candlecam_picture_el.width > candlecam_picture_el.height){
-                        //console.log("landscape");
-                        document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-portrait');
-                    }
-                    else{
-                        //console.log("portrait");
-                        document.getElementById('extension-candlecam-content').classList.add('extension-candlecam-portrait');
-                    }
-                });
+                            if(candlecam_picture_el.width > candlecam_picture_el.height){
+                                //console.log("landscape");
+                                document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-portrait');
+                            }
+                            else{
+                                //console.log("portrait");
+                                document.getElementById('extension-candlecam-content').classList.add('extension-candlecam-portrait');
+                            }
+                        });
                 
-                candlecam_picture_el.addEventListener('change', (event) => {
-                    console.log("image src changed");
-                });
+                        candlecam_picture_el.addEventListener('change', (event) => {
+                            console.log("image src changed");
+                        });
             
-            }
-            
-            this.connection_check_interval = setInterval( () => {
-                const pic = document.getElementById('extension-candlecam-picture');
-                if(this.image_load_error){
-                    //console.log("trying to fix image load error");
-                    if(pic != null){
-                        pic.src = this.current_stream_url;
                     }
-                }
-                //else{
-                    //console.log("pic complete? ", pic.complete);
-                //}
+            
+                    this.connection_check_interval = setInterval( () => {
+                        const pic = document.getElementById('extension-candlecam-picture');
+                        if(this.image_load_error){
+                            //console.log("trying to fix image load error");
+                            if(pic != null){
+                                pic.src = this.current_stream_url;
+                            }
+                        }
+                        //else{
+                            //console.log("pic complete? ", pic.complete);
+                        //}
                 
-            },5000);
+                    },5000);
             
             
             
-            //console.log("Candlecam: requesting /INIT");
+                    //console.log("Candlecam: requesting /INIT");
         
-            window.API.postJson(
-              `/extensions/candlecam/api/ajax`,
-      				{'action':'init'}
+                    window.API.postJson(
+                      `/extensions/candlecam/api/ajax`,
+              				{'action':'init'}
 
-            ).then((body) => {
-                console.log(".");
-      			console.log("init returned:");
-      			console.log(body);
-                //body_parsed = JSON.parse(body);
-                //console.log(body_parsed);
-                //this.thing_settings = JSON.parse(body['thing_settings']);
-                //this.thing_settings = body['thing_settings'];
+                    ).then((body) => {
+                        console.log(".");
+              			console.log("init returned:");
+              			console.log(body);
+                        //body_parsed = JSON.parse(body);
+                        //console.log(body_parsed);
+                        //this.thing_settings = JSON.parse(body['thing_settings']);
+                        //this.thing_settings = body['thing_settings'];
                 
-                // Reveal settings button
-                if(document.getElementById('extension-candlecam-settings-button') != null){
-                    this.removeClass(document.getElementById('extension-candlecam-settings-button'),"extension-candlecam-hidden");
-                }
+                        // Reveal settings button
+                        if(document.getElementById('extension-candlecam-settings-button') != null){
+                            this.removeClass(document.getElementById('extension-candlecam-settings-button'),"extension-candlecam-hidden");
+                        }
     			
-                document.getElementById('extension-candlecam-loading').classList.add('extension-candlecam-hidden');
+                        if(document.getElementById('extension-candlecam-loading') != null){
+                            document.getElementById('extension-candlecam-loading').classList.add('extension-candlecam-hidden');
                 
                 
-                this.show_list(body['photos']);
+                            this.show_list(body['photos']);
         
                 
-                if(body['camera_available'] == false){
-                    if(body['gateways'].length == 0){
-                        console.log("This controller has no camera attached, and it also detected no other Candle cam instances");
-                        document.getElementById('extension-candlecam-no-cameras-detected').classList.remove('extension-candlecam-hidden');
-                        document.getElementById('extension-candlecam-picture-holder').classList.add('extension-candlecam-hidden');
-                    }
-                    else if(body['webthings_addon_detected'] == false){
-                        console.log("no camera detected, and no webthing addon either, but at least one Candlecam was spotted");
-                        document.getElementById('extension-candlecam-webthing-tip').classList.remove('extension-candlecam-hidden');
-                    }
-                }
+                            if(body['camera_available'] == false){
+                                if(Object.keys(body['gateways']).length == 0){
+                                    console.log("This controller has no camera attached, and it also detected no other Candle cam instances");
+                                    document.getElementById('extension-candlecam-no-cameras-detected').classList.remove('extension-candlecam-hidden');
+                                    document.getElementById('extension-candlecam-picture-holder').classList.add('extension-candlecam-hidden');
+                                    document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-stream-error');
+                                    document.getElementById('extension-candlecam-content').classList.add('extension-candlecam-no-cameras-detected');
+                                    localStorage.removeItem("candlecam_last_selected_stream");
+                                    //console.log("candlecam_last_selected_stream should now be removed from localstorage");
+                                }
+                                else if(body['webthings_addon_detected'] == false){
+                                    console.log("no local camera attached, and no webthing addon either, but at least one Candlecam was spotted on the network");
+                                    document.getElementById('extension-candlecam-webthing-tip').classList.remove('extension-candlecam-hidden');
+                                }
+                            }
                 
-                if(body['camera_available'] == false && body['gateways'].length == 0){
-                    console.log("This controller has no camera attached, and it also detected no controllers");
+                            if(body['camera_available'] == false && body['gateways'].length == 0){
+                                console.log("This controller has no camera attached, and it also detected no controllers");
                     
-                }
+                            }
                 
                 
                 
                 
-                let stream_buttons_container = document.getElementById('extension-candlecam-stream-buttons-container');
-                if(stream_buttons_container != null){
-                    stream_buttons_container.innerHTML = '';
+                            let stream_buttons_container = document.getElementById('extension-candlecam-stream-buttons-container');
+                            if(stream_buttons_container != null){
+                                stream_buttons_container.innerHTML = '';
                     
-        			var stream_urls = [];
-                    if(typeof body['gateways'] != 'undefined'){
-                        //console.log("got gateways: ", body['gateways']);
-                        //console.log("got gateways typeof: ", typeof body['gateways']);
-                        //console.log("gateways length: ", Object.keys(body['gateways']).length );
-                        const stream_urls_count = Object.keys(body['gateways']).length;
-                        const gateways_keys = Object.keys(body['gateways']);
-                        //console.log('gateways_keys: ', gateways_keys);
+                    			var stream_urls = [];
+                                if(typeof body['gateways'] != 'undefined'){
+                                    //console.log("got gateways: ", body['gateways']);
+                                    //console.log("got gateways typeof: ", typeof body['gateways']);
+                                    //console.log("gateways length: ", Object.keys(body['gateways']).length );
+                                    const stream_urls_count = Object.keys(body['gateways']).length;
+                                    const gateways_keys = Object.keys(body['gateways']);
+                                    //console.log('gateways_keys: ', gateways_keys);
                         
                         
-                        for (var g = 0; g < Object.keys(body['gateways']).length; g++){
-                            //console.log(g, gateways_keys[g]);
-                            let gateway = body['gateways'][ gateways_keys[g] ];
-                            //console.log("name: ", gateway);
-                            const stream_url = 'http://' + gateways_keys[g] + ':8889/media/candlecam/stream/stream.mjpeg';
+                                    for (var g = 0; g < Object.keys(body['gateways']).length; g++){
+                                        console.log(g, gateways_keys[g]);
+                                        let gateway = body['gateways'][ gateways_keys[g] ];
+                                        //console.log("name: ", gateway);
+                                        const stream_url = 'http://' + gateways_keys[g] + ':8889/media/candlecam/stream/stream.mjpeg';
                         
-                            stream_urls.push( stream_url );
+                                        stream_urls.push( stream_url );
                             
-                            //if(stream_urls_count > 1){
-                                //console.log("creating buttons");
-                                var button_el = document.createElement('button');
-                                //i.setAttribute("type", "text");
-                                button_el.innerText = gateway;
-                                button_el.classList.add('text-button');
-                                button_el.setAttribute("data-stream-url", stream_url );
+                                        //if(stream_urls_count > 1){
+                                            //console.log("creating buttons");
+                                            var button_el = document.createElement('button');
+                                            //i.setAttribute("type", "text");
+                                            button_el.innerText = gateway;
+                                            button_el.classList.add('text-button');
+                                            button_el.setAttribute("data-stream-url", stream_url );
                                 
-                                button_el.addEventListener('click', (event) => {
-            			            //console.log('stream button clicked. Event: ', event.target);
-                                    //event.stopImmediatePropagation();
-                                    let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
-                                    //console.log("desired_stream_url: ", desired_stream_url);
+                                            button_el.addEventListener('click', (event) => {
+                        			            //console.log('stream button clicked. Event: ', event.target);
+                                                //event.stopImmediatePropagation();
+                                                let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
+                                                //console.log("desired_stream_url: ", desired_stream_url);
                                     
-                                    if( document.getElementById('extension-candlecam-picture').src != desired_stream_url){
-                                        //console.log("- changing src");
-                                        this.current_stream_url = desired_stream_url;
-                                        try{
-                                            document.getElementById('extension-candlecam-picture').src = desired_stream_url;
-                                        }
-                                        catch (e) {
-                                            console.log("CAUGHT IT AGAIN: ", e);
-                                        }
+                                                if( document.getElementById('extension-candlecam-picture').src != desired_stream_url){
+                                                    console.log("- changing src to: ", desired_stream_url);
+                                                    this.current_stream_url = desired_stream_url;
+                                                    try{
+                                                        document.getElementById('extension-candlecam-picture').src = desired_stream_url;
+                                                    }
+                                                    catch (e) {
+                                                        console.log("CAUGHT IT AGAIN: ", e);
+                                                    }
                                         
-                                    }
-                                    else{
-                                        console.log("- that url was already the image source");
-                                    }
-                                    localStorage.setItem('candlecam_last_selected_stream', desired_stream_url);
+                                                }
+                                                else{
+                                                    console.log("- that url was already the image source");
+                                                }
+                                                localStorage.setItem('candlecam_last_selected_stream', desired_stream_url);
                                     
-                                    document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", desired_stream_url );
-                                    document.getElementById("extension-candlecam-content").classList.remove('extension-candlecam-show-overview');
+                                                document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", desired_stream_url );
+                                                document.getElementById("extension-candlecam-content").classList.remove('extension-candlecam-show-overview');
                                     
-                                });
-                                stream_buttons_container.appendChild(button_el);
-                            //}
+                                            });
+                                            stream_buttons_container.appendChild(button_el);
+                                        //}
                         
-                        }
+                                    }
                         
-                    }
-                    //console.log("final stream_urls: ", stream_urls);
-                    try{
-                        if(stream_urls.length > 0){
-                            document.getElementById('extension-candlecam-picture').src = stream_urls[0];
-                            document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", stream_urls[0] );
-                            document.getElementById('extension-candlecam-save-picture-button').classList.remove('extension-candlecam-hidden');
-                            //this.grab_mjpeg_frame(stream_urls[0]);
-                        }
-                    }
-                    catch (e) {
-                        console.log("CAUGHT IT 3: ", e);
-                    }
+                                }
+                                //console.log("final stream_urls: ", stream_urls);
+                                try{
+                                    if(stream_urls.length > 0){
+                                        document.getElementById('extension-candlecam-picture').src = stream_urls[0];
+                                        document.getElementById('extension-candlecam-save-picture-button').setAttribute("data-stream-url", stream_urls[0] );
+                                        document.getElementById('extension-candlecam-save-picture-button').classList.remove('extension-candlecam-hidden');
+                                        //this.grab_mjpeg_frame(stream_urls[0]);
+                                    }
+                                }
+                                catch (e) {
+                                    console.log("CAUGHT IT 3: ", e);
+                                }
                     
-                }
+                            }
                 
-                //this.get_things();
+                            //this.get_things();
+                        }
+                        else{
+                            console.log("candlecam content did not load?");
+                        }
+                
             
-            }).catch((e) => {
-            	//pre.innerText = e.toString();
-      			console.log("ERROR Candle cam: init request failed: ", e);
-            });
+                    }).catch((e) => {
+                    	//pre.innerText = e.toString();
+              			console.log("ERROR Candle cam: init request failed: ", e);
+                    });
         
         
         
 	    
         
         
-            //const manifestUri = '/media/candlecam/index.mpd';
+                    //const manifestUri = '/media/candlecam/index.mpd';
 
-            function initApp() {
-              // Install built-in polyfills to patch browser incompatibilities.
-              shaka.polyfill.installAll();
-              // Check to see if the browser supports the basic APIs Shaka needs.
+                    function initApp() {
+                      // Install built-in polyfills to patch browser incompatibilities.
+                      shaka.polyfill.installAll();
+                      // Check to see if the browser supports the basic APIs Shaka needs.
           
-              if (shaka.Player.isBrowserSupported()) {
-                // Everything looks good!
-                initPlayer();
-              } else {
-                // This browser does not have the minimum set of APIs we need.
-                console.error('Browser not supported!');
-              }
+                      if (shaka.Player.isBrowserSupported()) {
+                        // Everything looks good!
+                        initPlayer();
+                      } else {
+                        // This browser does not have the minimum set of APIs we need.
+                        console.error('Browser not supported!');
+                      }
           
-            }
-
-            async function initPlayer() {
-              // Create a Player instance.
-              const video = document.getElementById('extension-candlecam-shaka-video');
-              const player = new shaka.Player(video);
-              console.log("shaka conf");
-              console.log(player.getConfiguration());
-              //player.configure('streaming.bufferingGoal', 0);
-              //player.configure('streaming.bufferBehind', 0);
-          
-              player.configure({
-                streaming: {
-                  bufferingGoal: 0,
-                  rebufferingGoal: 0,
-                  bufferBehind:0,
-                  jumpLargeGaps:true,
-                }
-                /*
-                ,
-                retryParameters:{
-                    timeout: 0,
-                    maxAttempts: 1000,
-                }
-                */
-              });
-              
-              player.configure('manifest.dash.ignoreMinBufferTime', true);
-              
-          
-              player.getNetworkingEngine().registerRequestFilter((type, request) => {
-                      request.headers = {
-                        Authorization: `Bearer ${API.jwt}`,
-                      };
-                    });
-          
-
-              // Attach player to the window to make it easy to access in the JS console.
-              window.player = player;
-
-              // Listen for error events.
-              player.addEventListener('error', onErrorEvent);
-
-              // Try to load a manifest.
-              // This is an asynchronous process.
-              /*
-              try {
-                await player.load(manifestUri);
-                // This runs if the asynchronous load is successful.
-                console.log('The video has now been loaded!');
-              } catch (e) {
-                // onError is executed if the asynchronous load fails.
-                onError(e);
-              }
-              */
-            }
-
-            function onErrorEvent(event) {
-              // Extract the shaka.util.Error object from the event.
-              onError(event.detail);
-            }
-
-            function onError(error) {
-              // Log the error.
-              console.error('Error loading video: ', error.code, 'object', error);
-            }
-
-            //document.addEventListener('DOMContentLoaded', initApp);
-        
-        
-    		try {
-                //console.log(window.shaka);
-                function waitForElement(){
-                    if(typeof shaka !== "undefined"){
-                        console.log("Shaka no longer undefined. Starting...");
-                        initApp();
                     }
-                    else{
-                        console.log("wait for Shaka...");
-                        setTimeout(waitForElement, 250);
+
+                    async function initPlayer() {
+                      // Create a Player instance.
+                      const video = document.getElementById('extension-candlecam-shaka-video');
+                      const player = new shaka.Player(video);
+                      console.log("shaka conf");
+                      console.log(player.getConfiguration());
+                      //player.configure('streaming.bufferingGoal', 0);
+                      //player.configure('streaming.bufferBehind', 0);
+          
+                      player.configure({
+                        streaming: {
+                          bufferingGoal: 0,
+                          rebufferingGoal: 0,
+                          bufferBehind:0,
+                          jumpLargeGaps:true,
+                        }
+                        /*
+                        ,
+                        retryParameters:{
+                            timeout: 0,
+                            maxAttempts: 1000,
+                        }
+                        */
+                      });
+              
+                      player.configure('manifest.dash.ignoreMinBufferTime', true);
+              
+          
+                      player.getNetworkingEngine().registerRequestFilter((type, request) => {
+                              request.headers = {
+                                Authorization: `Bearer ${API.jwt}`,
+                              };
+                            });
+          
+
+                      // Attach player to the window to make it easy to access in the JS console.
+                      window.player = player;
+
+                      // Listen for error events.
+                      player.addEventListener('error', onErrorEvent);
+
+                      // Try to load a manifest.
+                      // This is an asynchronous process.
+                      /*
+                      try {
+                        await player.load(manifestUri);
+                        // This runs if the asynchronous load is successful.
+                        console.log('The video has now been loaded!');
+                      } catch (e) {
+                        // onError is executed if the asynchronous load fails.
+                        onError(e);
+                      }
+                      */
                     }
-                }
-                //waitForElement(); # disabled Shaka player
+
+                    function onErrorEvent(event) {
+                      // Extract the shaka.util.Error object from the event.
+                      onError(event.detail);
+                    }
+
+                    function onError(error) {
+                      // Log the error.
+                      console.error('Error loading video: ', error.code, 'object', error);
+                    }
+
+                    //document.addEventListener('DOMContentLoaded', initApp);
+        
+        
+            		try {
+                        //console.log(window.shaka);
+                        function waitForElement(){
+                            if(typeof shaka !== "undefined"){
+                                console.log("Shaka no longer undefined. Starting...");
+                                initApp();
+                            }
+                            else{
+                                console.log("wait for Shaka...");
+                                setTimeout(waitForElement, 250);
+                            }
+                        }
+                        //waitForElement(); # disabled Shaka player
 			
-    		}
-    		catch (e) {
-    			console.log("Could not start Shaka video player: " + e);
-    		}
+            		}
+            		catch (e) {
+            			console.log("Could not start Shaka video player: " + e);
+            		}
         
         
         
         
 			
 
-    		// EVENT LISTENERS
+            		// EVENT LISTENERS
 
-            // Delete all snapshots
-            
-            document.getElementById("extension-candlecam-photos-list-delete-all-button").addEventListener('click', (event) => {
+                    // Delete all snapshots
+                    const delete_all_button = document.getElementById("extension-candlecam-photos-list-delete-all-button");
+                    if(delete_all_button != null){
+                        delete_all_button.addEventListener('click', (event) => {
                 
-                if(confirm("Are you sure you want to delete all snapshots?")){
-                    document.getElementById("extension-candlecam-photos-list-delete-all-button").classList.add('extension-candlecam-hidden');
+                            if(confirm("Are you sure you want to delete all snapshots?")){
+                                document.getElementById("extension-candlecam-photos-list-delete-all-button").classList.add('extension-candlecam-hidden');
                 
-        	        window.API.postJson(
-        	          `/extensions/candlecam/api/ajax`,
-                        {'action':'delete_all'}
+                    	        window.API.postJson(
+                    	          `/extensions/candlecam/api/ajax`,
+                                    {'action':'delete_all'}
                 
-        	        ).then((body) => {
+                    	        ).then((body) => {
     	  			
-                        if(body['state']){
-                            this.saved_photos_list = body['data'];
-                            this.show_list(body['data']);
-                            document.getElementById("extension-candlecam-photos-list-delete-all-button").classList.add('extension-candlecam-hidden');
-                            document.getElementById('extension-candlecam-preview-img').src = "";
-                        }
-                        else{
-                            alert("Error, failed to delete snapshots");
-                        }
+                                    if(body['state']){
+                                        this.saved_photos_list = body['data'];
+                                        this.show_list(body['data']);
+                                        document.getElementById("extension-candlecam-photos-list-delete-all-button").classList.add('extension-candlecam-hidden');
+                                        document.getElementById('extension-candlecam-preview-img').src = "";
+                                    }
+                                    else{
+                                        alert("Error, failed to delete snapshots");
+                                    }
                     
                 
-        	        }).catch((e) => {
-        	  			console.log("Candlecam: error doing grab_picture_from_stream request: ", e);
-                        alert("Connection error, failed to delete snapshots");
-        	        });
-                }
+                    	        }).catch((e) => {
+                    	  			console.log("Candlecam: error doing grab_picture_from_stream request: ", e);
+                                    alert("Connection error, failed to delete snapshots");
+                    	        });
+                            }
                 
                 
                 
-            });
+                        });
+                    }
+                    
 
-            // Save picture button
-    		document.getElementById("extension-candlecam-save-picture-button").addEventListener('click', (event) => {
+                    // Save picture button
+            		document.getElementById("extension-candlecam-save-picture-button").addEventListener('click', (event) => {
                 
-                let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
-                if(desired_stream_url != null){
-                    //console.log("save picture: desired_stream_url: ", desired_stream_url);
+                        let desired_stream_url = event.currentTarget.getAttribute("data-stream-url");
+                        if(desired_stream_url != null){
+                            //console.log("save picture: desired_stream_url: ", desired_stream_url);
                 
-                    document.getElementById('extension-candlecam-preview-img').src = "";
-                    document.getElementById("extension-candlecam-content").classList.add('extension-candlecam-busy-saving-snapshot');
-                    setTimeout(function(){
-                        document.getElementById("extension-candlecam-content").classList.remove('extension-candlecam-busy-saving-snapshot');
-                    }, 6000);
-                    setTimeout(function(){
-                        document.getElementById("extension-candlecam-preview").classList.add('extension-candlecam-transparent');
-                    }, 10000);
+                            document.getElementById('extension-candlecam-preview-img').src = "";
+                            document.getElementById("extension-candlecam-content").classList.add('extension-candlecam-busy-saving-snapshot');
+                            setTimeout(function(){
+                                document.getElementById("extension-candlecam-content").classList.remove('extension-candlecam-busy-saving-snapshot');
+                            }, 6000);
+                            setTimeout(function(){
+                                document.getElementById("extension-candlecam-preview").classList.add('extension-candlecam-transparent');
+                            }, 10000);
                     
-        	        window.API.postJson(
-        	          `/extensions/candlecam/api/ajax`,
-                        {'action':'grab_picture_from_stream',
-                        'stream_url':desired_stream_url}
+                	        window.API.postJson(
+                	          `/extensions/candlecam/api/ajax`,
+                                {'action':'grab_picture_from_stream',
+                                'stream_url':desired_stream_url}
                     
-        	        ).then((body) => {
-        	  			//console.log("grab_picture_from_stream returned:");
-        	  			//console.log(body);
-                        if(body['state']){
-                            this.saved_photos_list = body['photos'];
-                            this.show_list(body['photos']);
+                	        ).then((body) => {
+                	  			//console.log("grab_picture_from_stream returned:");
+                	  			//console.log(body);
+                                if(body['state']){
+                                    this.saved_photos_list = body['photos'];
+                                    this.show_list(body['photos']);
                             
-                            const latest_photo = body['photos'][ body['photos'].length - 1 ];
-                            //console.log("latest_photo: ", latest_photo);
-                            document.getElementById('extension-candlecam-preview-img').src = "/extensions/candlecam/photos/" + latest_photo;
-                            document.getElementById("extension-candlecam-preview").classList.remove('extension-candlecam-transparent');
+                                    const latest_photo = body['photos'][ body['photos'].length - 1 ];
+                                    //console.log("latest_photo: ", latest_photo);
+                                    document.getElementById('extension-candlecam-preview-img').src = "/extensions/candlecam/photos/" + latest_photo;
+                                    document.getElementById("extension-candlecam-preview").classList.remove('extension-candlecam-transparent');
                             
-                        }
+                                }
                         
                     
-        	        }).catch((e) => {
-        	  			console.log("Candlecam: error doing grab_picture_from_stream request: ", e);
-        	        });
-                }
-                else{
-                    console.log("missing stream_url");
-                }
+                	        }).catch((e) => {
+                	  			console.log("Candlecam: error doing grab_picture_from_stream request: ", e);
+                	        });
+                        }
+                        else{
+                            console.log("missing stream_url");
+                        }
                 
                 
-    		});
+            		});
             
             
             
-            // door release button
-            document.getElementById("extension-candlecam-door-release-button").addEventListener('click', () => {
-                console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
-                const property_id = this.thing_settings.door_release_property_id;
-                const message = JSON.parse(`{ "${this.thing_settings.door_release_property_id}": true}`);
-                //console.log(message);
-                API.putJson(`/things/${this.thing_settings.door_release_thing_id}/properties/${this.thing_settings.door_release_property_id}`, true); //message);
-            });
+                    // door release button
+                    document.getElementById("extension-candlecam-door-release-button").addEventListener('click', () => {
+                        console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
+                        const property_id = this.thing_settings.door_release_property_id;
+                        const message = JSON.parse(`{ "${this.thing_settings.door_release_property_id}": true}`);
+                        //console.log(message);
+                        API.putJson(`/things/${this.thing_settings.door_release_thing_id}/properties/${this.thing_settings.door_release_property_id}`, true); //message);
+                    });
         
-            // door close button
-            document.getElementById("extension-candlecam-door-close-button").addEventListener('click', () => {
-                //console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
-                const property_id = this.thing_settings.door_release_property_id;
-                const message = JSON.parse(`{ "${this.thing_settings.door_release_property_id}": false}`);
-                //console.log(message);
-                API.putJson(`/things/${this.thing_settings.door_release_thing_id}/properties/${this.thing_settings.door_release_property_id}`, message);
-            });
+                    // door close button
+                    document.getElementById("extension-candlecam-door-close-button").addEventListener('click', () => {
+                        //console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
+                        const property_id = this.thing_settings.door_release_property_id;
+                        const message = JSON.parse(`{ "${this.thing_settings.door_release_property_id}": false}`);
+                        //console.log(message);
+                        API.putJson(`/things/${this.thing_settings.door_release_thing_id}/properties/${this.thing_settings.door_release_property_id}`, message);
+                    });
             
             
-            // show saved pictures archive button
-            document.getElementById("extension-candlecam-picture-exit").addEventListener('click', () => {
-                document.getElementById("extension-candlecam-content").classList.add('extension-candlecam-show-overview');
-            });
+                    // show saved pictures archive button
+                    document.getElementById("extension-candlecam-picture-exit").addEventListener('click', () => {
+                        document.getElementById("extension-candlecam-content").classList.add('extension-candlecam-show-overview');
+                    });
             
             
             
             
 			
-    		/*	
-    		document.getElementById("extension-candlecam-picture-holder").addEventListener('click', () => {
-    			var menu_button = document.getElementById("menu-button");
-    			menu_button.click();//dispatchEvent('click');
-    		});
-            */
+            		/*	
+            		document.getElementById("extension-candlecam-picture-holder").addEventListener('click', () => {
+            			var menu_button = document.getElementById("menu-button");
+            			menu_button.click();//dispatchEvent('click');
+            		});
+                    */
         
         
-            // Settings toggle
+                    // Settings toggle
 		
-            document.getElementById("extension-candlecam-settings-button").addEventListener('click', () => {
-    			//console.log("click");
-                event.stopImmediatePropagation();
-    			const settings_view = document.getElementById('extension-candlecam-settings-container');
-    			//const overview = document.getElementById('extension-candlecam-overview');
-                if(this.hasClass(settings_view,'extension-candlecam-hidden')){
-                    this.removeClass(settings_view,"extension-candlecam-hidden");
-                }
-                else{
-                    this.addClass(settings_view,"extension-candlecam-hidden");
+                    document.getElementById("extension-candlecam-settings-button").addEventListener('click', () => {
+            			//console.log("click");
+                        event.stopImmediatePropagation();
+            			const settings_view = document.getElementById('extension-candlecam-settings-container');
+            			//const overview = document.getElementById('extension-candlecam-overview');
+                        if(this.hasClass(settings_view,'extension-candlecam-hidden')){
+                            this.removeClass(settings_view,"extension-candlecam-hidden");
+                        }
+                        else{
+                            this.addClass(settings_view,"extension-candlecam-hidden");
                 
-                    const camera_source_select = document.getElementById('extension-candlecam-camera-source-select');
-                    const push_button_select = document.getElementById('extension-candlecam-push-button-select');
-                    const door_release_select = document.getElementById('extension-candlecam-door-release-select');
+                            const camera_source_select = document.getElementById('extension-candlecam-camera-source-select');
+                            const push_button_select = document.getElementById('extension-candlecam-push-button-select');
+                            const door_release_select = document.getElementById('extension-candlecam-door-release-select');
         
-                    //console.log("push_button_select.value = " + push_button_select.value);
-                    //console.log("door_release_select.value = " + door_release_select.value);
+                            //console.log("push_button_select.value = " + push_button_select.value);
+                            //console.log("door_release_select.value = " + door_release_select.value);
         
-                    this.thing_settings['camera_source_thing_id'] = camera_source_select.value.split("_____")[0];
-                    this.thing_settings['camera_source_property_id'] = camera_source_select.value.split("_____")[1];
+                            this.thing_settings['camera_source_thing_id'] = camera_source_select.value.split("_____")[0];
+                            this.thing_settings['camera_source_property_id'] = camera_source_select.value.split("_____")[1];
         
-                    this.thing_settings['push_button_thing_id'] = push_button_select.value.split("_____")[0];
-                    this.thing_settings['push_button_property_id'] = push_button_select.value.split("_____")[1];
+                            this.thing_settings['push_button_thing_id'] = push_button_select.value.split("_____")[0];
+                            this.thing_settings['push_button_property_id'] = push_button_select.value.split("_____")[1];
         
-                    this.thing_settings['door_release_thing_id'] = door_release_select.value.split("_____")[0];
-                    this.thing_settings['door_release_property_id'] = door_release_select.value.split("_____")[1];
+                            this.thing_settings['door_release_thing_id'] = door_release_select.value.split("_____")[0];
+                            this.thing_settings['door_release_property_id'] = door_release_select.value.split("_____")[1];
                 
-                    //console.log("this.thing_settings.door_release_thing_id = " + this.thing_settings.door_release_thing_id);
-                    //console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
+                            //console.log("this.thing_settings.door_release_thing_id = " + this.thing_settings.door_release_thing_id);
+                            //console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
                     
-        	        window.API.postJson(
-        	          `/extensions/candlecam/api/ajax`,
-                        {'action':'save_settings','thing_settings':this.thing_settings}
+                	        window.API.postJson(
+                	          `/extensions/candlecam/api/ajax`,
+                                {'action':'save_settings','thing_settings':this.thing_settings}
 
-        	        ).then((body) => {
-        	  			console.log("save settings returned:");
-        	  			console.log(body);
-        	        }).catch((e) => {
-        	        	//pre.innerText = e.toString();
-        	  			console.log("Candlecam: error saving settings: ",e);
-        	        });
+                	        ).then((body) => {
+                	  			console.log("save settings returned:");
+                	  			console.log(body);
+                	        }).catch((e) => {
+                	        	//pre.innerText = e.toString();
+                	  			console.log("Candlecam: error saving settings: ",e);
+                	        });
                     
                     
-                    this.generate_ui();
-                }
-    		});
+                            this.generate_ui();
+                        }
+            		});
         
             
-            // Settings select buttons changes
+                    // Settings select buttons changes
             
             
-            document.getElementById("extension-candlecam-push-button-select").addEventListener('change', (event) => {
-                const new_value = document.getElementById("extension-candlecam-push-button-select").value;
-                console.log('select dropdown changed. New value: ', new_value); 
-                if(new_value != null && typeof new_value != 'undefined'){
-                    console.log("useful value");
-                    document.getElementById('extension-candlecam-main-door-buttons-container').classList.remove('extension-candlecam-hidden');
+                    document.getElementById("extension-candlecam-push-button-select").addEventListener('change', (event) => {
+                        const new_value = document.getElementById("extension-candlecam-push-button-select").value;
+                        console.log('select dropdown changed. New value: ', new_value); 
+                        if(new_value != null && typeof new_value != 'undefined'){
+                            console.log("useful value");
+                            document.getElementById('extension-candlecam-main-door-buttons-container').classList.remove('extension-candlecam-hidden');
+                        }
+                    });
+                
                 }
-            });
+                catch(e){
+                    console.log("general error in show(): ", e);
+                }
+                
+                
+            }, 200);
+            
+    		
+            
             
             
             
@@ -737,7 +765,7 @@
         
     	hide(){
 		
-            
+            console.log("in hide");
     		try {
     			window.clearInterval(this.connection_check_interval);
     		}

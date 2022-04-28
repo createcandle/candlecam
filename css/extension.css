@@ -13,26 +13,42 @@
 }
 
 
+
 #extension-candlecam-no-cameras-detected{
-    margin: 10rem auto;
-    max-width:40rem;
+    display:none;
 }
+.extension-candlecam-no-cameras-detected #extension-candlecam-no-cameras-detected{
+    display:flex;
+}
+
+.extension-candlecam-no-cameras-detected #extension-candlecam-stream-error-container{
+    display:none!important;
+}
+
+#extension-candlecam-no-cameras-detected > div{
+    margin: 8rem auto;
+    max-width:40rem;
+    padding:2rem;
+    background-color:rgba(0,0,0,.1);
+    border-radius:.5rem;
+}
+
 
 #extension-candlecam-webthing-tip{
     position: fixed;
     bottom: 0;
     padding: 0 2rem;
+    width:100%;
     background-color: rgba(0,0,0,.1);
 }
 
-
-#extension-candlecam-loading{
+.extension-candlecam-fixed-centered{
+    position:fixed;
     width:100vw;
     height:calc(100vh - 10rem);
     display:flex;
     justify-content:center;
     align-items:center;
-    position:fixed;
 }
 
 
@@ -52,7 +68,7 @@
 }
 
 .extension-candlecam-stream-error #extension-candlecam-picture-holder,
-.extension-candlecam-show-overview #extension-candlecam-picture-holder{
+.extension-candlecam-show-overview #extension-candlecam-picture-tab{
     display:none;
 }
 

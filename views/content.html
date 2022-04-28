@@ -6,68 +6,74 @@
                poster="/media/candlecam/stream/latest.jpg"
                controls autoplay></video>-->
         
-        <div id="extension-candlecam-no-cameras-detected" class="extension-candlecam-hidden">
-            <h3 style="text-align:center">No Candle Cameras detected</h3>
-            <p style="text-align:center">A scan of your local network did not reveal any Candle Cameras (yet). Try again in a minute or two.</p>
-            <button onClick="window.location.reload();" class="text-button">Scan again</button>
-        </div>
         
-        <div id="extension-candlecam-webthing-tip" class="extension-candlecam-hidden">
-            <p>Tip: install the "Web Thing" addon from the Candle store on the controller that you want to use as the central hub. It will allow you to control all cameras from one central controller.</p>
-        </div>
-        
-        <div id="extension-candlecam-stream-error-container">
-            <div class="extension-candlecam-spinner">
-                <div></div><div></div><div></div><div></div>
-            </div>
-            <p style="text-align:center">The stream could not be loaded yet. Will attempt again every 5 seconds.</p>
-        </div>
-        
-        <div id="extension-candlecam-picture-holder">
-            <img id="extension-candlecam-picture" src="" alt="Live stream">
+        <div id="extension-candlecam-picture-tab">
             
-            <div id="extension-candlecam-preview" class="extension-candlecam-transparent">
-                <img id="extension-candlecam-preview-img" alt="Latest snapshot"/>
-            </div>
-            
-            <div id="extension-candlecam-main-buttons-container">
-                <button id="extension-candlecam-save-picture-button" class="icon-button extension-candlecam-hidden" aria-label="Save picture"></button>
-                <div id="extension-candlecam-main-door-buttons-container" class="extension-candlecam-hidden">
-                    <button id="extension-candlecam-door-release-button" class="icon-button extension-candlecam-hidden" aria-label="Open door"></button>
-                    <button id="extension-candlecam-door-close-button" class="icon-button extension-candlecam-hidden" aria-label="Close door"></button>
+            <div id="extension-candlecam-no-cameras-detected" class="extension-candlecam-hidden extension-candlecam-fixed-centered">
+                <div>
+                    <h3 style="text-align:center">No Candle Cameras detected</h3>
+                    <p style="text-align:center">A scan of your local network did not reveal any Candle Cameras (yet). Try again in a minute or two.</p>
+                    <button onClick="window.location.reload();" class="text-button">Scan again</button>
                 </div>
-        
+            </div>
+    
+            <div id="extension-candlecam-stream-error-container" class="extension-candlecam-fixed-centered">
+                <div>
+                    <div class="extension-candlecam-spinner">
+                        <div></div><div></div><div></div><div></div>
+                    </div>
+                    <p style="text-align:center">The stream could not be loaded yet. Will attempt again every 5 seconds.</p>
+                </div>
             </div>
             
-            <div id="extension-candlecam-settings-button-container">
-                <button id="extension-candlecam-settings-button" class="icon-button" data-l10n-id="settings-button" aria-label="Doorbell settings"></button>
+            <div id="extension-candlecam-picture-holder">
+            
                 
-                <div id="extension-candlecam-settings-container" class="extension-candlecam-hidden">
-        
-                    <h2>Settings</h2>
-                    <p>Here you can select which devices should work together to form a smart doorbell system.</p>
-        
-                    <h5>Camera source</h5>
-                    <select id="extension-candlecam-camera-source-select" class="extension-candlecam-dropdown">
-                        <option value=""></option>
-                    </select>
-        
-                    <h5>Push button</h5>
-                    <select id="extension-candlecam-push-button-select" class="extension-candlecam-dropdown">
-                        <option value=""></option>
-                    </select>
-        
-                    <h5>Door release</h5>
-                    <select id="extension-candlecam-door-release-select" class="extension-candlecam-dropdown">
-                        <option value=""></option>
-                    </select>
+            
+                <img id="extension-candlecam-picture" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Live stream">
+            
+                <div id="extension-candlecam-preview" class="extension-candlecam-transparent">
+                    <img id="extension-candlecam-preview-img" alt="Latest snapshot"/>
+                </div>
+            
+                <div id="extension-candlecam-main-buttons-container">
+                    <button id="extension-candlecam-save-picture-button" class="icon-button extension-candlecam-hidden" aria-label="Save picture"></button>
+                    <div id="extension-candlecam-main-door-buttons-container" class="extension-candlecam-hidden">
+                        <button id="extension-candlecam-door-release-button" class="icon-button extension-candlecam-hidden" aria-label="Open door"></button>
+                        <button id="extension-candlecam-door-close-button" class="icon-button extension-candlecam-hidden" aria-label="Close door"></button>
+                    </div>
         
                 </div>
+            
+                <div id="extension-candlecam-settings-button-container">
+                    <button id="extension-candlecam-settings-button" class="icon-button" aria-label="Doorbell settings"></button>
                 
-            </div>
+                    <div id="extension-candlecam-settings-container" class="extension-candlecam-hidden">
+        
+                        <h2>Settings</h2>
+                        <p>Here you can select which devices should work together to form a smart doorbell system.</p>
+        
+                        <h5>Camera source</h5>
+                        <select id="extension-candlecam-camera-source-select" class="extension-candlecam-dropdown">
+                            <option value=""></option>
+                        </select>
+        
+                        <h5>Push button</h5>
+                        <select id="extension-candlecam-push-button-select" class="extension-candlecam-dropdown">
+                            <option value=""></option>
+                        </select>
+        
+                        <h5>Door release</h5>
+                        <select id="extension-candlecam-door-release-select" class="extension-candlecam-dropdown">
+                            <option value=""></option>
+                        </select>
+        
+                    </div>
+                
+                </div>
 
             
-
+            </div>
         </div>
 
         <div id="extension-candlecam-overview">
@@ -75,11 +81,15 @@
             <div id="extension-candlecam-snapshot-holder"><img id="extension-candlecam-snapshot" src="" alt="snapshot"/></div>
             <ul id="extension-candlecam-photos-list"></ul>
             <button id="extension-candlecam-photos-list-delete-all-button" class="text-button">Delete all</button>
+            <p></p>
+            <div id="extension-candlecam-webthing-tip" class="extension-candlecam-hidden">
+                <p>Tip: install the "Web Thing" addon from the Candle store on the controller that you want to use as the central hub. It will allow you to control all cameras from one central controller.</p>
+            </div>
         </div>
                
         <div id="extension-candlecam-clock-container"><div id="extension-candlecam-clock"></div></div>
         
-        <div id="extension-candlecam-loading">
+        <div id="extension-candlecam-loading" class="extension-candlecam-fixed-centered">
             <div class="extension-candlecam-spinner">
                 <div></div><div></div><div></div><div></div>
             </div>
