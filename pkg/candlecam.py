@@ -75,7 +75,7 @@ if os.path.isdir("/etc/voicecard"):
 
 
 try:
-    from gateway_addon import Database, Adapter, Device, Property, APIHandler, APIResponse
+    from gateway_addon import Database, Adapter, Device, Property, APIHandler, APIResponse, Action
 except:
     print("Error, could not load gateway addon library")
     
@@ -524,7 +524,7 @@ class CandlecamAPIHandler(APIHandler):
     
             #self.streaming = self.persistent_data['streaming']
             self.previous_streaming_state = self.persistent_data['streaming']
-            self.previous_send_to_matrix_state = self.persistent_data['send_to_matrix']
+            self.previous_send_to_matrix = self.persistent_data['send_to_matrix']
             self.previous_ringtone = self.persistent_data['ringtone']
             self.previous_ringtone_volume = self.persistent_data['ringtone_volume']
             self.previous_led_color = self.persistent_data['led_color']
@@ -2798,7 +2798,7 @@ class CandlecamAPIHandler(APIHandler):
                          self.button_state,
                          metadata={
                              '@type': 'PushedProperty',
-                             'title': 'Button',
+                             'title': 'Button pressed',
                              'type': 'boolean',
                              'description': 'Shows the state of the doorbell button',
                          }))
@@ -3397,7 +3397,7 @@ class CandlecamDevice(Device):
                                     },
                                     False)
                                 
-                if self.voco_installed and self.never_send_to_matrix == False:
+                if self.api_handler.voco_installed and self.api_handler.never_send_to_matrix == False:
                     self.properties["send_to_matrix"] = CandlecamProperty(
                                         self,
                                         "send_to_matrix",
@@ -3416,7 +3416,7 @@ class CandlecamDevice(Device):
                                 "button",
                                 {
                                     '@type': 'PushedProperty',
-                                    'label': "Button",
+                                    'label': "Button pressed",
                                     'type': 'boolean'
                                 },
                                 False)
@@ -3499,6 +3499,22 @@ class CandlecamDevice(Device):
                                     self.adapter.persistent_data['audio_output'])
                 """
             
+            
+            print("calling add_action for playing ringtone")
+            try:
+                self.add_action('ring', {
+                    'title': 'Ring',
+                    'description': 'Create the sound of a ringing doorbell',
+                })
+            except Exception as ex:
+                print("Error adding actions to candlecam device: " + str(ex))
+        
+            #try:
+            #    self.perform_action('ring')
+            #except Exception as ex:
+            #    print("performing action error: " + str(ex))
+            
+            
         except Exception as ex:
             print("error adding properties: " + str(ex))
 
@@ -3506,6 +3522,14 @@ class CandlecamDevice(Device):
             print("Candlecam thing has been created.")
 
 
+    def perform_action(self, action):
+        print("an action should be performed: " + str(dir(action)))
+        print(str(action.id))
+        print(str(action.name))
+        
+        if action.name == 'ring':
+            print("action: ring")
+            self.api_handler.play_ringtone()
 
 #
 # PROPERTY
@@ -3567,6 +3591,10 @@ class CandlecamProperty(Property):
             elif self.name == 'led_brightness':
                 self.device.api_handler.set_led(self.device.api_handler.persistent_data['led_color'],int(value))
                 #self.update(int(value))
+                
+            #elif self.name == 'play_ringtone':
+            #    self.device.api_handler.play_ringtone_now(bool(value))
+            #self.
                 
             #if self.name == 'audio output':
             #    self.device.api_handler.set_audio_output(str(value))

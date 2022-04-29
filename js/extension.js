@@ -442,6 +442,14 @@
                     }).catch((e) => {
                     	//pre.innerText = e.toString();
               			console.log("ERROR Candle cam: init request failed: ", e);
+                        
+                        // Pretending that a scan failed
+                        document.getElementById('extension-candlecam-loading').classList.add('extension-candlecam-hidden');
+                        document.getElementById('extension-candlecam-no-cameras-detected').classList.remove('extension-candlecam-hidden');
+                        document.getElementById('extension-candlecam-picture-holder').classList.add('extension-candlecam-hidden');
+                        document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-stream-error');
+                        document.getElementById('extension-candlecam-content').classList.add('extension-candlecam-no-cameras-detected');
+            
                     });
         
         
