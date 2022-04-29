@@ -2130,8 +2130,11 @@ class CandlecamAPIHandler(APIHandler):
             print("\nHERE\nin thingy_take_snapshot. state: " + str(state))
         if state:
             #global taking_a_photo_countdown
-            if self.taking_a_photo_countdown == 0:
-                self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
+            if self.has_respeaker_hat:
+                if self.taking_a_photo_countdown == 0:
+                    self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
+            else:
+                self.take_a_photo = True
             #self.grab_snapshots(self.own_mjpeg_url)
             # Switch thingy snapshot button back to off        
     
@@ -2186,8 +2189,11 @@ class CandlecamAPIHandler(APIHandler):
                 #self.take_a_photo = True
                 #global taking_a_photo_countdown
                 
-                if self.taking_a_photo_countdown == 0:
-                    self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
+                if self.has_respeaker_hat:
+                    if self.taking_a_photo_countdown == 0:
+                        self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
+                else:
+                    self.take_a_photo = True
                 result = True
             
             else:
@@ -2259,8 +2265,11 @@ class CandlecamAPIHandler(APIHandler):
                 
                 #global taking_a_photo_countdown
                 
-                if self.taking_a_photo_countdown == 0:
-                    self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
+                if self.has_respeaker_hat:
+                    if self.taking_a_photo_countdown == 0:
+                        self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
+                else:
+                    self.take_a_photo = True
                 return True
             
             else:
@@ -2448,67 +2457,86 @@ class CandlecamAPIHandler(APIHandler):
         
         self.pressed_countdown = self.pressed_countdown_time
         #time.sleep(2)
-        if taking_a_photo_countdown == 0:
-            taking_a_photo_countdown = self.taking_a_photo_countdown_start
+        if self.has_respeaker_hat: # this should always be true here, but just in case...
+            if self.taking_a_photo_countdown == 0:
+                self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
+        else:
+            print("Error, in ding, but no respeaker hat. Should be impossible.")
+            self.take_a_photo = True
         return
         
         
     # This is called every 100 milliseconds
     def update_button(self):
         
-        if self.previous_streaming_state != self.persistent_data['streaming']:
-            print("\n.\n.update button: streaming state changed to: " + str(self.persistent_data['streaming']))
-            self.previous_streaming_state = self.persistent_data['streaming']
-            self.thingy.properties["streaming"].value.notify_of_external_update(bool(self.persistent_data['streaming']))
+        if self.has_respeaker_hat:
+            try:
+                if self.previous_streaming_state != self.persistent_data['streaming']:
+                    print("\n.\n.update button: streaming state changed to: " + str(self.persistent_data['streaming']))
+                    self.previous_streaming_state = self.persistent_data['streaming']
+                    self.thingy.properties["streaming"].value.notify_of_external_update(bool(self.persistent_data['streaming']))
         
-        if self.previous_ringtone != self.persistent_data['ringtone']:
-            self.previous_ringtone = self.persistent_data['ringtone']
-            self.thingy.properties["ringtone"].value.notify_of_external_update(str(self.persistent_data['ringtone']))
+                if self.previous_ringtone != self.persistent_data['ringtone']:
+                    self.previous_ringtone = self.persistent_data['ringtone']
+                    self.thingy.properties["ringtone"].value.notify_of_external_update(str(self.persistent_data['ringtone']))
             
-        if self.previous_ringtone_volume != self.persistent_data['ringtone_volume']:
-            self.previous_ringtone_volume = self.persistent_data['ringtone_volume']
-            self.thingy.properties["ringtone_volume"].value.notify_of_external_update(int(self.persistent_data['ringtone_volume']))
+                if self.previous_ringtone_volume != self.persistent_data['ringtone_volume']:
+                    self.previous_ringtone_volume = self.persistent_data['ringtone_volume']
+                    self.thingy.properties["ringtone_volume"].value.notify_of_external_update(int(self.persistent_data['ringtone_volume']))
         
-        if self.previous_led_color != self.persistent_data['led_color']:
-            self.previous_led_color = self.persistent_data['led_color']
-            #self.streaming_value.notify_of_external_update(self.streaming)
-            self.thingy.properties["led_color"].value.notify_of_external_update(str(self.persistent_data['led_color']))
+                if self.previous_led_color != self.persistent_data['led_color']:
+                    self.previous_led_color = self.persistent_data['led_color']
+                    #self.streaming_value.notify_of_external_update(self.streaming)
+                    self.thingy.properties["led_color"].value.notify_of_external_update(str(self.persistent_data['led_color']))
         
-        if self.previous_led_brightness != self.persistent_data['led_brightness']:
-            self.previous_led_brightness = self.persistent_data['led_brightness']
-            self.thingy.properties["led_brightness"].value.notify_of_external_update(int(self.persistent_data['led_brightness']))
+                if self.previous_led_brightness != self.persistent_data['led_brightness']:
+                    self.previous_led_brightness = self.persistent_data['led_brightness']
+                    self.thingy.properties["led_brightness"].value.notify_of_external_update(int(self.persistent_data['led_brightness']))
             
-        if self.previous_politeness != self.persistent_data['politeness']:
-            self.previous_politeness = self.persistent_data['politeness']
-            self.thingy.properties["politeness"].value.notify_of_external_update(bool(self.persistent_data['politeness']))
+                if self.previous_politeness != self.persistent_data['politeness']:
+                    self.previous_politeness = self.persistent_data['politeness']
+                    self.thingy.properties["politeness"].value.notify_of_external_update(bool(self.persistent_data['politeness']))
         
-        if self.previous_send_to_matrix != self.persistent_data['send_to_matrix']:
-            self.previous_send_to_matrix = self.persistent_data['send_to_matrix']
-            self.thingy.properties["send_to_matrix"].value.notify_of_external_update(bool(self.persistent_data['send_to_matrix']))
-        
+                if self.previous_send_to_matrix != self.persistent_data['send_to_matrix']:
+                    self.previous_send_to_matrix = self.persistent_data['send_to_matrix']
+                    self.thingy.properties["send_to_matrix"].value.notify_of_external_update(bool(self.persistent_data['send_to_matrix']))
+            except Exception as ex:
+                print("Error updating thingy values from update button loop: " + str(ex))
         
         #global taking_a_photo_countdown
         
-        if self.taking_a_photo_countdown > 0:
-            if self.DEBUG:
-                print("[o] " + str(self.taking_a_photo_countdown))
+            if self.taking_a_photo_countdown > 0:
             
-            if self.taking_a_photo_countdown == (self.taking_a_photo_countdown_start - 1):
-                self.move_cover('open')
-            
-                self.thingy.properties["snapshot"].value.notify_of_external_update(True)
-                
-            if self.taking_a_photo_countdown == (self.taking_a_photo_countdown_start - 20):
                 if self.DEBUG:
-                    print("\nSNAPSHOT COUNTDOWN HALFWAY, TAKING PHOTO")
-                self.take_a_photo = True
+                    print("[o] " + str(self.taking_a_photo_countdown))
+            
+                try:
+                    if self.taking_a_photo_countdown == (self.taking_a_photo_countdown_start - 1):
+                        self.move_cover('open')
+            
+                        self.thingy.properties["snapshot"].value.notify_of_external_update(True)
                 
-            if self.taking_a_photo_countdown == 1:
-                if self.persistent_data['politeness']:
-                    self.move_cover('closed')
-                self.thingy.properties["snapshot"].value.notify_of_external_update(False)
+                    if self.taking_a_photo_countdown == (self.taking_a_photo_countdown_start - 20):
+                        if self.DEBUG:
+                            print("\nSNAPSHOT COUNTDOWN HALFWAY, TAKING PHOTO")
+                        self.take_a_photo = True
                 
-            self.taking_a_photo_countdown -= 1
+                    if self.taking_a_photo_countdown == 1:
+                        if self.persistent_data['politeness'] and self.pressed_countdown == 0:
+                            self.move_cover('closed')
+                        self.thingy.properties["snapshot"].value.notify_of_external_update(False)
+                except Exception as ex:
+                    print("Error during snapshot countdown checks: " + str(ex))
+                
+                self.taking_a_photo_countdown -= 1
+        
+        # no respeaker hat
+        else:
+            if self.taking_a_photo_countdown > 0:
+                print("Error, photo countdown was bigger than 0, even though there is no respeaker hat. It was: " + str(self.taking_a_photo_countdown))
+                self.taking_a_photo_countdown = 0
+                #self.take_a_photo = True
+                
         
         #print("in update_button")
         if self.pressed:
@@ -2854,15 +2882,15 @@ class CandlecamAPIHandler(APIHandler):
                          }))
         
         
-            # Watch for button press events, but only if a respeaker hat is present
-            if self.DEBUG:
-                print('thingy: starting the sensor update looping task')
-            self.button_timer = tornado.ioloop.PeriodicCallback(
-                self.update_button,
-                100
-            )
-            self.button_timer.start()
-            print("self.button_timer: " + str(self.button_timer))
+        # Watch for button press events, but only if a respeaker hat is present
+        if self.DEBUG:
+            print('thingy: starting the sensor update looping task')
+        self.button_timer = tornado.ioloop.PeriodicCallback(
+            self.update_button,
+            100
+        )
+        self.button_timer.start()
+        print("self.button_timer: " + str(self.button_timer))
         
         
         
@@ -2969,11 +2997,6 @@ class StreamyHandler(tornado.web.RequestHandler):
         #global frame
         #global streaming
         #global viewers
-        try:
-            token = self.request.headers.get('Authorization')
-            print("auth token: " + str(token))
-        except Exception as ex:
-            print("error extracting authorization token: " + str(ex))
         
         self.api_handler.viewer_count += 1
         #print("viewer count: " + str(viewers))
@@ -3005,7 +3028,8 @@ class StreamyHandler(tornado.web.RequestHandler):
                 
                 
                 if self.api_handler.viewer_count < viewer_count - (self.api_handler.maximum_connections - 1):
-                    print("Too many viewers, stopping get loop: " + str(self.viewer_count))
+                    if self.api_handler.DEBUG:
+                        print("Too many viewers, stopping get loop: " + str(self.viewer_count))
                     #self.flush()
                     break
                     
@@ -3063,7 +3087,8 @@ class StreamyHandler(tornado.web.RequestHandler):
                 
                 
             except Exception as ex:
-                print("Error posting frame: " + str(ex))
+                if self.api_handler.DEBUG:
+                    print("Error posting frame: " + str(ex))
                 
                 """
                 self.write(my_boundary + '\r\n')
@@ -3083,7 +3108,8 @@ class StreamyHandler(tornado.web.RequestHandler):
         #print("streamyhandler: GET while loop ended")
         
     def on_finish(self):
-        print("streamyhandler: in on_finish")
+        if self.api_handler.DEBUG:
+            print("streamyhandler: in on_finish")
         pass
         
         
@@ -3099,7 +3125,7 @@ class PingHandler(tornado.web.RequestHandler):
     #@tornado.web.asynchronous
     @tornado.gen.coroutine
     def get(self):
-        print("in PingHandler get")
+        #print("in PingHandler get")
         #self.set_header('Cache-Control', 'no-cache, private')
         self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
         self.set_header('Pragma', 'no-cache')
@@ -3110,7 +3136,7 @@ class PingHandler(tornado.web.RequestHandler):
         yield tornado.gen.sleep(.1)
         
     def on_finish(self):
-        print("pingy in on_finish")
+        #print("pingy in on_finish")
         pass
 
 
@@ -3123,7 +3149,8 @@ class SnapshotHandler(tornado.web.RequestHandler):
     #@tornado.web.asynchronous
     @tornado.gen.coroutine
     def get(self):
-        print("in SnapshotHandler get")
+        if self.api_handler.DEBUG:
+            print("in SnapshotHandler get")
     
         #global frame
         #global streaming
@@ -3140,41 +3167,73 @@ class SnapshotHandler(tornado.web.RequestHandler):
         for stat in top_stats[:10]:
             print(stat)
         """
+        if self.api_handler.has_respeaker_hat:
+            if self.api_handler.taking_a_photo_countdown == 0:
+                if self.api_handler.DEBUG:
+                    print("countdown is at 0")
+                if self.api_handler.persistent_data['streaming'] == False:
+                    self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
+                    self.set_header('Pragma', 'no-cache')
+                    #self.set_header('Connection', 'close')
+                    self.set_header("Content-type",  "image/jpeg")
+                
+                    #not_streaming_image_size = os.path.getsize(not_streaming_image_path)
+                    #with open(not_streaming_image_path, "rb") as file:
+                    #    not_streaming_image = file.read()
+                    #    self.write(not_streaming_image)
+                    #self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(self.api_handler.not_streaming_image))
+                    self.write(self.api_handler.not_streaming_image)
+                
+                    self.flush()
+                    yield tornado.gen.sleep(.1)
+                    
+                else:
+                    self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
+                    self.set_header('Pragma', 'no-cache')
+                    #self.set_header('Connection', 'close')
+                    self.set_header("Content-type",  "image/jpeg")
+                    self.api_handler.taking_a_photo_countdown = 60
+                    yield tornado.gen.sleep(2.1)
+                    self.write(self.api_handler.frame)
+                    self.flush()
+                    yield tornado.gen.sleep(.1)
+                
+            else:
+                
+                if self.api_handler.DEBUG:
+                    print("countdown is NOT at 0. It is: " + str(self.api_handler.taking_a_photo_countdown))
+                    print("Too soon. self.api_handler.taking_a_photo_countdown: " + str(self.api_handler.taking_a_photo_countdown))
+                #self.clear()
+                self.set_status(204)
         
-        if self.api_handler.taking_a_photo_countdown == 0:
+                self.flush()
+                yield tornado.gen.sleep(.1)
+                
+        else:
             if self.api_handler.persistent_data['streaming'] == False:
                 self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
                 self.set_header('Pragma', 'no-cache')
                 #self.set_header('Connection', 'close')
                 self.set_header("Content-type",  "image/jpeg")
-                
+            
                 #not_streaming_image_size = os.path.getsize(not_streaming_image_path)
                 #with open(not_streaming_image_path, "rb") as file:
                 #    not_streaming_image = file.read()
                 #    self.write(not_streaming_image)
                 #self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(self.api_handler.not_streaming_image))
                 self.write(self.api_handler.not_streaming_image)
-                
+            
                 self.flush()
                 yield tornado.gen.sleep(.1)
-                    
+                
             else:
                 self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
                 self.set_header('Pragma', 'no-cache')
                 #self.set_header('Connection', 'close')
                 self.set_header("Content-type",  "image/jpeg")
-                self.api_handler.taking_a_photo_countdown = 60
-                yield tornado.gen.sleep(2.1)
                 self.write(self.api_handler.frame)
                 self.flush()
                 yield tornado.gen.sleep(.1)
-                
-        else:
-            #self.clear()
-            self.set_status(500)
-        
-            self.flush()
-            yield tornado.gen.sleep(.1)
         #print("not_streaming_image type: " + str(type(not_streaming_image)))
         #print("not_streaming_image size: " + str(not_streaming_image_size))
         #print("sys.getsizeof(not_streaming_image): " + str(sys.getsizeof(not_streaming_image)))
@@ -3206,7 +3265,8 @@ class SnapshotHandler(tornado.web.RequestHandler):
         
     
     def on_finish(self):
-        print("snapshot in on_finish")
+        if self.api_handler.DEBUG:
+            print("snapshot in on_finish")
         pass
 
 
@@ -3255,7 +3315,7 @@ class CandlecamAdapter(Adapter):
         
         # Create the candlecam device
         try:
-            #print("adapter: creating device with id: " + str(self.api_handler.thingy_id))
+            print("adapter: creating device with id: " + str(self.api_handler.thingy_id))
             self.candlecam_device = CandlecamDevice(self) # self.audio_output_options  # , self.api_handler.thingy_id
             self.handle_device_added(self.candlecam_device)
             if self.DEBUG:
@@ -3337,7 +3397,7 @@ class CandlecamDevice(Device):
                                     },
                                     False)
                                 
-                if self.api_handler.voco_installed and self.api_handler.never_send_to_matrix == False:
+                if self.voco_installed and self.never_send_to_matrix == False:
                     self.properties["send_to_matrix"] = CandlecamProperty(
                                         self,
                                         "send_to_matrix",
