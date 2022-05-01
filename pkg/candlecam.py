@@ -1333,9 +1333,9 @@ class CandlecamAPIHandler(APIHandler):
         self.save_persistent_data()
 
         try:
-            self.adapter.candlecam_device.properties["send_to_matrix"].update(politeness_state)
+            self.adapter.candlecam_device.properties["send_to_matrix"].update(state)
         except Exception as ex:
-            print("Error setting politeness_state on thing: " + str(ex))
+            print("Error setting send_to_matrix state on thing: " + str(ex))
         
 
     def volume_change(self,ringtone_volume):
@@ -1353,7 +1353,7 @@ class CandlecamAPIHandler(APIHandler):
 
     def streaming_change(self,state):
         if self.DEBUG:
-            print("in streaming_changereally. new streaming state: " + str(state))
+            print("in streaming_change. new streaming state: " + str(state))
             #print("self.encode_audio: " + str(self.encode_audio))
         
         if self.camera_available == False:
@@ -1634,10 +1634,10 @@ class CandlecamAPIHandler(APIHandler):
 
 
 
-        if 'Never send snapshots to Matrix messenger' in config:
-            self.never_send_to_matrix = bool(config['Never send snapshots to Matrix messenger'])
+        if 'Disable sending snapshots to Matrix messenger' in config:
+            self.never_send_to_matrix = bool(config['Disable sending snapshots to Matrix messenger'])
             if self.DEBUG:
-                print("-Never send snapshots to Matrix messenger preference was in config: " + str(self.never_send_to_matrix))
+                print("-Disable sending snapshots to Matrix messenger preference was in config: " + str(self.never_send_to_matrix))
 
         if 'Send snapshots to printer' in config:
             self.send_snapshots_to_printer = bool(config['Send snapshots to printer'])
@@ -2089,7 +2089,7 @@ class CandlecamAPIHandler(APIHandler):
             if self.pwm != None:
                 self.pwm.stop()
             #self.pi.stop()
-            
+            GPIO.cleanup()
         except Exception as ex:
             print("Unload: stopping GPIO error: " + str(ex))
         
@@ -2769,7 +2769,7 @@ class CandlecamAPIHandler(APIHandler):
                          }))
         else:
             if self.DEBUG:
-                print("\n! NO CAMERA detected! Not adding start/stop streaming button to thing.")
+                print("\nNO camera detected. Not adding start/stop streaming button to thingy")
         
         
         if self.DEBUG:
@@ -2890,7 +2890,6 @@ class CandlecamAPIHandler(APIHandler):
             100
         )
         self.button_timer.start()
-        print("self.button_timer: " + str(self.button_timer))
         
         
         
@@ -3315,7 +3314,7 @@ class CandlecamAdapter(Adapter):
         
         # Create the candlecam device
         try:
-            print("adapter: creating device with id: " + str(self.api_handler.thingy_id))
+            #print("adapter: creating device with id: " + str(self.api_handler.thingy_id))
             self.candlecam_device = CandlecamDevice(self) # self.audio_output_options  # , self.api_handler.thingy_id
             self.handle_device_added(self.candlecam_device)
             if self.DEBUG:
@@ -3484,6 +3483,16 @@ class CandlecamDevice(Device):
                                 self.api_handler.persistent_data['politeness'])
                 
             
+                self.properties["send_to_matrix"] = CandlecamProperty(
+                                self,
+                                "send_to_matrix",
+                                {
+                                    'label': "Send to Matrix",
+                                    'type': 'boolean'
+                                },
+                                self.api_handler.persistent_data['send_to_matrix'])
+                
+            
 
                 """
                 if sys.platform != 'darwin':
@@ -3500,7 +3509,7 @@ class CandlecamDevice(Device):
                 """
             
             
-            print("calling add_action for playing ringtone")
+            #print("calling add_action for playing ringtone")
             try:
                 self.add_action('ring', {
                     'title': 'Ring',
