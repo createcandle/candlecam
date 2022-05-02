@@ -32,7 +32,9 @@
     background-color:rgba(0,0,0,.1);
     border-radius:.5rem;
 }
-
+#extension-candlecam-no-cameras-detected button{
+    margin:2rem;
+}
 
 #extension-candlecam-webthing-tip{
     position: fixed;

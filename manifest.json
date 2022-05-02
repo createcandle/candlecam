@@ -44,6 +44,10 @@
           "description": "If this controller has a camera, then this determines at what level of visual detail the stream is sent. Normally the camera streams at 640x480 pixels to enable streaming to multiple devices at once. If you enable high resolution mode the stream will be 720p (1280x720 pixels), but at the cost of only live streaming to one device at a time.",
           "type": "boolean"
         },
+        "Use ReSpeaker hat": {
+          "description": "Enable this if you have plugged in a ReSpeaker hat. You will need to install such a device if you want to turn your controller into a smart doorbell.",
+          "type": "boolean"
+        },
         "Data retention days": {
           "description": "For how many days should snapshots be stored? The default is 2 days. Set to 0 to disable taking snapshots.",
           "enum": [
@@ -76,7 +80,7 @@
     }
   },
   "short_name": "candlecam",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "web_accessible_resources": [
     "css/*.css",
     "images/*.svg",

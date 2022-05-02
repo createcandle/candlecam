@@ -156,6 +156,7 @@ class CandlecamAPIHandler(APIHandler):
             
             
             # RESPEAKER
+            self.repeaker_hat_plugged_in = False
             self.has_respeaker_hat = False
             self.pwm = None
             self.lights = None
@@ -1627,6 +1628,17 @@ class CandlecamAPIHandler(APIHandler):
                     print("- set maximum connections to 1")
                 
 
+        if 'Use ReSpeaker hat' in config:
+            self.repeaker_hat_plugged_in = bool(config['Use ReSpeaker hat'])
+            if self.repeaker_hat_plugged_in:
+                if self.DEBUG:
+                    print("creating use_repeaker_hat.txt in boot partition")
+                os.system('sudo touch /boot/use_repeaker_hat.txt')
+            else:
+                if os.path.isfile('/boot/use_repeaker_hat.txt'):
+                    if self.DEBUG:
+                        print("removing use_repeaker_hat.txt from boot partition")
+                    os.system('sudo rm /boot/use_repeaker_hat.txt')
         #if 'Interval' in config:
         #    self.interval = int(config['Interval'])
         #    if self.DEBUG:
