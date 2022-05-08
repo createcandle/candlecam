@@ -42,7 +42,14 @@
     padding: 0 2rem;
     width:100%;
     background-color: rgba(0,0,0,.1);
+    box-sizing:border-box;
 }
+
+#extension-candlecam-webthing-tip > p{
+    max-width: 60rem;
+    margin: 2rem auto;
+}
+
 
 .extension-candlecam-fixed-centered{
     position:fixed;
