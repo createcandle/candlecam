@@ -938,11 +938,11 @@ class CandlecamAPIHandler(APIHandler):
             changed_pixels = 0
             #print("Loading fresh image..")
             fresh_image = Image.open( stream )
-            if self.DEBUG:
-                print("fresh image opened. size: " + str(fresh_image.size))
+            #if self.DEBUG:
+            #    print("fresh image opened. size: " + str(fresh_image.size))
             if lowres_width != self.resolution[0]:
-                if self.DEBUG:
-                    print("scaling image")
+                #if self.DEBUG:
+                #    print("scaling image")
                 fresh_image = fresh_image.resize((lowres_width,lowres_height))
             fresh_buffer = fresh_image.load()
             
