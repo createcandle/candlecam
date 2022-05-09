@@ -513,11 +513,13 @@ class CandlecamAPIHandler(APIHandler):
                 self.persistent_data['motion_sensitivity_percentage'] = 0
             if 'motion_snapshot' not in self.persistent_data:
                 self.persistent_data['motion_snapshot'] = False
+            if 'night_mode' not in self.persistent_data:
+                self.persistent_data['night_mode'] = False
+            
             
             if self.DEBUG:
                 print("\n\nself.persistent_data: " + str(self.persistent_data))
                 print("\n\nthing_server_id: " + str(self.persistent_data['thing_server_id']))
-    
     
     
             #streaming = self.persistent_data['streaming'] # global
@@ -533,6 +535,7 @@ class CandlecamAPIHandler(APIHandler):
             self.previous_politeness = self.persistent_data['politeness']
             self.previous_motion_sensitivity_percentage = self.persistent_data['motion_sensitivity_percentage']
             self.previous_motion_snapshot = self.persistent_data['motion_snapshot']
+            self.previous_night_mode = self.persistent_data['night_mode']
             #self.ringtone_value = Value(self.persistent_data['ringtone'])
             #self.ringtone_value = Value(self.persistent_data['ringtone'], lambda v: self.ringtone_change(v))
             #self.streaming_value = Value(self.persistent_data['streaming'], self.streaming_change)
@@ -859,9 +862,24 @@ class CandlecamAPIHandler(APIHandler):
                 self.resolution = resolution
         
                 with picamera.PiCamera(resolution=resolution, framerate=10) as self.picam:
-                    self.picam.exposure_mode = 'auto'
                     self.picam.awb_mode = 'auto'
                     self.picam.rotation = self.picam_rotation
+                    
+                    if self.persistent_data['night_mode']:
+                        self.picam.exposure_mode = "night"
+                        self.picam.image_effect = "denoise"
+                        self.picam.exposure_compensation = 25
+                        self.picam.ISO = 800
+                        self.picam.brightness = 70
+                        self.picam.contrast = 50
+                    else:
+                        self.picam.exposure_mode = "auto"
+                        self.picam.image_effect = "none"
+                        self.picam.exposure_compensation = 0
+                        self.picam.ISO = 0
+                        self.picam.brightness = 50
+                        self.picam.contrast = 0
+                        
         
                     time.sleep(2)
             
@@ -925,8 +943,8 @@ class CandlecamAPIHandler(APIHandler):
         #    print("\nin detect_motion")
         #    print("-self.resolution[0]: " + str(self.resolution[0]))
         #    print("-self.resolution[1]: " + str(self.resolution[1]))
-            
-            
+        
+        
         lowres_width = 320
         lowres_height = 240
         if self.portrait_mode:
@@ -1098,7 +1116,7 @@ class CandlecamAPIHandler(APIHandler):
         except Exception as ex:
             print("Error setting send_to_matrix state on thing: " + str(ex))
         
-        
+            
 
     def volume_change(self,ringtone_volume):
         if self.DEBUG:
@@ -1112,6 +1130,7 @@ class CandlecamAPIHandler(APIHandler):
             print("Error setting ringtone volume on thing: " + str(ex))
         
         
+        
     def motion_sensitivity_change(self,value):
         if self.DEBUG:
             print("new motion_sensitivity_percentage: " + str(value))
@@ -1123,6 +1142,33 @@ class CandlecamAPIHandler(APIHandler):
         except Exception as ex:
             print("Error setting motion_sensitivity_percentage on thing: " + str(ex))
     
+        
+    def night_mode_change(self,state):
+         if self.DEBUG:
+             print("in night_mode_change, state changes to: " + str(state))
+         self.persistent_data['night_mode'] = state
+         self.save_persistent_data()
+         
+         if self.picam != None:
+             if self.persistent_data['night_mode']:
+                 self.picam.exposure_mode = "night"
+                 self.picam.image_effect = "denoise"
+                 self.picam.exposure_compensation = 25
+                 self.picam.ISO = 800
+                 self.picam.brightness = 70
+                 self.picam.contrast = 50
+             else:
+                 self.picam.exposure_mode = "auto"
+                 self.picam.image_effect = "none"
+                 self.picam.exposure_compensation = 0
+                 self.picam.ISO = 0
+                 self.picam.brightness = 50
+                 self.picam.contrast = 0
+                 
+         try:
+             self.adapter.candlecam_device.properties["night_mode"].update(state)
+         except Exception as ex:
+             print("Error setting motion_snapshot state on thing: " + str(ex))
         
 
     def streaming_change(self,state):
@@ -1505,7 +1551,7 @@ class CandlecamAPIHandler(APIHandler):
                         print("checking server ip_address: " + str(ip_address))
                 
                     try:
-                        #stream_url = 'http://' + ip_address + ':8889/media/candlecam/stream/stream.mjpeg';
+                        #stream_url = 'http://' + ip_address + ':8889/media/candlecam/stream/stream.mjpeg'
                         #r = requests.get(stream_url)
                         #if self.DEBUG:
                         #    print("status code: " + str(r.status_code))
@@ -2332,6 +2378,11 @@ class CandlecamAPIHandler(APIHandler):
                 if self.previous_send_to_matrix != self.persistent_data['send_to_matrix']:
                     self.previous_send_to_matrix = self.persistent_data['send_to_matrix']
                     self.thingy.properties["send_to_matrix"].value.notify_of_external_update(bool(self.persistent_data['send_to_matrix']))
+                    
+                if self.previous_night_mode != self.persistent_data['night_mode']:
+                    self.previous_night_mode = self.persistent_data['night_mode']
+                    self.thingy.properties["night_mode"].value.notify_of_external_update(bool(self.persistent_data['night_mode']))
+                    
             except Exception as ex:
                 print("Error updating thingy values from update button loop: " + str(ex))
         
@@ -2643,6 +2694,16 @@ class CandlecamAPIHandler(APIHandler):
                          'title': 'Snapshot on motion',
                          'type': 'boolean',
                          'description': 'Automatically take a snapshot if motion is detected',
+                     }))
+                     
+            self.thingy.add_property(
+                webthing.Property(self.thingy,
+                     'night_mode',
+                     Value(self.persistent_data['night_mode'], lambda v: self.night_mode_change(v)),
+                     metadata={
+                         'title': 'Night mode',
+                         'type': 'boolean',
+                         'description': 'Makes the camera more light sensitive',
                      }))
                 
                          
@@ -3277,6 +3338,7 @@ class CandlecamDevice(Device):
                                         },
                                         False)
 
+
                 # Motion detection
                 self.properties["motion_sensitivity_percentage"] = CandlecamProperty(
                                 self,
@@ -3305,6 +3367,7 @@ class CandlecamDevice(Device):
                                 },
                                 self.api_handler.motion_detection_level)
                 
+                
                 self.properties["motion_snapshot"] = CandlecamProperty(
                             self,
                             "motion_snapshot",
@@ -3314,6 +3377,16 @@ class CandlecamDevice(Device):
                             },
                             self.api_handler.persistent_data['motion_snapshot'])
                                 
+                
+                self.properties["night_mode"] = CandlecamProperty(
+                            self,
+                            "night_mode",
+                            {
+                                'label': "Night mode",
+                                'type': 'boolean'
+                            },
+                            self.api_handler.persistent_data['night_mode'])
+                
                 
                 if self.api_handler.voco_installed and self.api_handler.never_send_to_matrix == False:
                     self.properties["send_to_matrix"] = CandlecamProperty(
@@ -3434,7 +3507,7 @@ class CandlecamDevice(Device):
                 
             
             
-            if self.api_handler.camera_available:
+            #if self.api_handler.camera_available:
                 
                 
             
@@ -3557,6 +3630,10 @@ class CandlecamProperty(Property):
                 
             elif self.name == 'motion_snapshot':
                 self.device.api_handler.motion_snapshot_change(bool(value))
+            
+            elif self.name == 'night_mode':
+                self.device.api_handler.night_mode_change(bool(value))
+
                 
             #elif self.name == 'play_ringtone':
             #    self.device.api_handler.play_ringtone_now(bool(value))
@@ -3692,7 +3769,7 @@ def arpa_detect_gateways(quick=True):
                         
                     #print("found valid IP address: " + str(ip_address))
                     try:
-                        test_url_a = 'http://' + ip_address + ':8889/ping'; #'http://' + str(ip_address) + "/"
+                        test_url_a = 'http://' + ip_address + ':8889/ping' #'http://' + str(ip_address) + "/"
                         #test_url_b = 'https://' + str(ip_address) + "/"
                         #html = ""
                         try:
