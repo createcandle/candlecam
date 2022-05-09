@@ -58,6 +58,7 @@ try:
 except:
     print("Error, could not load gpiozero library")
 
+from PIL import Image
 
 if os.path.isdir("/etc/voicecard"):
 
@@ -141,153 +142,147 @@ class CandlecamAPIHandler(APIHandler):
         except Exception as ex:
             print("Failed creating handler for proxy: " + str(ex))
             
+            
+        #global frame
+        #frame = b''
+        #global viewers
+        #viewers = 0
+        #global streaming
+        #streaming = True
+        
+        #global taking_a_photo_countdown
+        #taking_a_photo_countdown = 0
+        self.taking_a_photo_countdown = 0
+        
+        
+        
+        # RESPEAKER
+        self.repeaker_hat_plugged_in = False
+        self.has_respeaker_hat = False
+        self.pwm = None
+        self.lights = None
+        self.plughw_number = '0,0'
+        self.has_respeaker_hat = False
+        self.ringtones = ['default','classic','klingel','business','fart','none']
+        self.cover_currently_open = True
+        
+        # THINGS
+        self.things = [] # Holds all the things, updated via the API. Used to display a nicer thing name instead of the technical internal ID.
+        #self.data_types_lookup_table = {}
+        
+        
+        # NETWORK
+        self.last_network_scan_time = 0
+        self.busy_doing_network_scan = False
+        self.gateways_ip_list = [] # list of IP addresses of local candle servers
+        self.gateways_ip_dict = {} # dict IP addresses and hostnames of local candle servers
+        
+        self.own_ip = '127.0.0.1'
         try:
-            #global frame
-            #frame = b''
-            #global viewers
-            #viewers = 0
-            #global streaming
-            #streaming = True
+            self.own_ip = get_ip()
+        except Exception as ex:
+            print("Error in get_ip during init: " + str(ex))
+        
+        
+        # STREAMING
+        self.frame = b''
+        self.viewer_count = 0
+        self.ffmpeg_process = None
+        self.encode_audio = False
+        self.only_stream_on_button_press = False
+        self.own_mjpeg_url = 'http://' + self.own_ip + ':8889/media/candlecam/stream/stream.mjpeg'
+        self.own_snapshot_url = 'http://' + self.own_ip + ':8889/snapshot.jpg'
+        self.streaming_duration_when_polite = 300 # When in polite mode, streaming is time-limited
+        
+        
+        # CAMERA
+        self.picam = None
+        self.framerate = 10
+        self.last_write_time = 0
+        self.portrait_mode = False
+        self.hires = False
+        self.maximum_connections = 2
+        self.resolution = (640,480)
+        
+        
+        # MOTION DETECTION
+        self.motion_detection = True
+        self.detected_motion = False
+        self.motion_snapshot_threshold = 50
+        #self.motion_sensitivity_percentage = 30
+        self.old_buffer = None
+        self.motion_detection_level = 0
+        self.previous_motion_detection_level = 0
+        self.previous_motion_sensitivity_percentage = 0
+        
+        
+        # PRINT
+        self.send_snapshots_to_printer = False
+        self.photo_printer_available = False
+        
+        
+         
+        
             
-            #global taking_a_photo_countdown
-            #taking_a_photo_countdown = 0
-            self.taking_a_photo_countdown = 0
-            
-            
-            
-            # RESPEAKER
-            self.repeaker_hat_plugged_in = False
-            self.has_respeaker_hat = False
-            self.pwm = None
-            self.lights = None
-            self.plughw_number = '0,0'
-            self.has_respeaker_hat = False
-            self.ringtones = ['default','classic','klingel','business','fart','none']
-            
-            
-            # THINGS
-            self.things = [] # Holds all the things, updated via the API. Used to display a nicer thing name instead of the technical internal ID.
-            #self.data_types_lookup_table = {}
-            
-            
-            # NETWORK
-            self.last_network_scan_time = 0
-            self.busy_doing_network_scan = False
-            self.gateways_ip_list = [] # list of IP addresses of local candle servers
-            self.gateways_ip_dict = {} # dict IP addresses and hostnames of local candle servers
-            
-            self.own_ip = '127.0.0.1'
-            try:
-                self.own_ip = get_ip()
-            except Exception as ex:
-                print(str(ex))
-            
-            
-            # STREAMING
-            self.frame = b''
-            self.viewer_count = 0
-            self.ffmpeg_process = None
-            self.encode_audio = False
-            self.only_stream_on_button_press = False
-            self.own_mjpeg_url = 'http://' + self.own_ip + ':8889/media/candlecam/stream/stream.mjpeg'
-            self.own_snapshot_url = 'http://' + self.own_ip + ':8889/snapshot.jpg'
-            
-            
-            
-            # CAMERA
-            self.picam = None
-            self.framerate = 10
-            self.last_write_time = 0
-            self.portrait_mode = False
-            self.hires = False
-            self.maximum_connections = 2
-            
-            
-            # PRINT
-            self.send_snapshots_to_printer = False
-            self.photo_printer_available = False
-            
-            
-            # WEBTHING THINGY & SERVER
-            self.thingy = None
-            self.thing_server = None
-            self.webthing_port = 8889
-            #self.name = 'candlecam' # thing name
+        # WEBTHING THINGY & SERVER
+        self.thingy = None
+        self.thing_server = None
+        self.webthing_port = 8889
+        #self.name = 'candlecam' # thing name
+        try:
             self.thingy_id = 'candlecam_webthing_' + str(randomWord(4)) # not really necessary, will be overwritten from persistent data
-            self.https = False
-            self.button_state = Value(False)
-            
-            self.snapshot_state = False #Value(False)
-            self.previous_snapshot_state = False
-            #self.streaming = True #Value(True)
-            self.pressed = False
-            self.pressed_sent = False
-            self.pressed_countdown_time = 60 #1200 # 1200 = 2 minutes
-            self.pressed_countdown = self.pressed_countdown_time
-            self.webthings_addon_detected = False
-            
-            
-            #GPIO
-            self.button_pin = 17
-            self.servo_pin = 13
-            self.servo_open_position = 0
-            self.servo_closed_position = 70
-            
-            
-            # RAMDRIVE (not used currently)
-            self.use_ramdrive = True
-            self.ramdrive_created = False # it's only created is enough free memory is available (50Mb)
+        except Exception as ex:
+            print("Error in getting random webthing ID during init: " + str(ex))
+        self.https = False
+        self.button_state = Value(False)
+        
+        self.snapshot_state = False #Value(False)
+        self.previous_snapshot_state = False
+        #self.streaming = True #Value(True)
+        self.pressed = False
+        self.pressed_sent = False
+        self.pressed_countdown_time = 600 # in tenths of a second. So 60 is 6 seconds.
+        self.pressed_countdown = 0 #self.pressed_countdown_time
+        self.webthings_addon_detected = False
+        
+        
+        #GPIO
+        self.button_pin = 17
+        self.servo_pin = 13
+        self.servo_open_position = 0
+        self.servo_closed_position = 70
+        
+        
+        # RAMDRIVE (not used currently)
+        self.use_ramdrive = True
+        self.ramdrive_created = False # it's only created is enough free memory is available (50Mb)
 
+        
+        # Matrix
+        self.never_send_to_matrix = True
+        self.voco_installed = False
+        
+        #self.volume_level = 90
+        
+        self.snapshot1 = None # TODO: used?
+        self.snapshot2 = None
+        
+        
+        #self.terminated = False
+        
+        self.take_a_photo = False
+        self.taking_a_photo_countdown_start = 60
             
-            # Matrix
-            self.never_send_to_matrix = True
-            self.voco_installed = False
-            
-            #self.volume_level = 90
-            
-            self.snapshot1 = None
-            self.snapshot2 = None
-            
-            
-            #self.terminated = False
-            
-            self.take_a_photo = False
-            self.taking_a_photo_countdown_start = 60
-            
-            
-            # DETECT RESPEAKER HAT
+        # DETECT RESPEAKER HAT
+        try:
             print("\naplay -l output:")
             aplay_output = run_command('aplay -l')
             print(str(aplay_output))
             if 'seeed' in aplay_output.lower():
                 print("SEEED ReSpeaker hat spotted")
                 self.has_respeaker_hat = True
-            else:
-                print("No SEEED ReSpeaker hat spotted")
+                self.cover_currently_open = False
                 
-            #print("\nself.has_respeaker_hat: " + str(self.has_respeaker_hat))
-
-
-            #ALTERNATIVE RESPEAKER CHECK
-            
-            #self.has_respeaker_hat = False # Is a ReSPeaker 2 mic hat installed?
-            #if os.path.isdir("/etc/voicecard"):
-            #    self.has_respeaker_hat = True
-            
-            #self.network_scan()
-            
-            
-            
-        except Exception as ex:
-            print("Failed in first part of init: " + str(ex))
-            
-            
-        
-
-            
-        try: 
-            if self.has_respeaker_hat:
-            
                 # Button (pin 17)
                 GPIO.setmode(GPIO.BCM) # Use BCM pin numbering
                 GPIO.setup(self.button_pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
@@ -311,18 +306,18 @@ class CandlecamAPIHandler(APIHandler):
                 #    print(dc)
         
                 #self.pwm.stop()
-        
+                
+            else:
+                print("No SEEED ReSpeaker hat spotted")
+            
         except Exception as ex:
-            print("Failed in GPIO init: " + str(ex))
-            
-            
+            print("Error while detecting and setting up respeaker hat: " + str(ex))
             
             
             
                 
         # CHECK IF CAMERA IS AVAILABLE
         self.camera_available = False
-
         try:
             check_camera_enabled_command_array = ['/opt/vc/bin/vcgencmd','get_camera']
             check_camera_result = subprocess.check_output(check_camera_enabled_command_array)
@@ -438,8 +433,6 @@ class CandlecamAPIHandler(APIHandler):
             print("WARNING, Failed to load persistent data: " + str(e))
         
             
-        
-        
                 
         # LOAD CONFIG
         try:
@@ -452,6 +445,8 @@ class CandlecamAPIHandler(APIHandler):
         try:
             system_hostname = socket.gethostname().lower()
             self.hostname = system_hostname
+            if self.DEBUG:
+                print("self.hostname: " + str(self.hostname))
             self.hosts = [
                 'localhost',
                 'localhost:{}'.format(self.webthing_port),
@@ -500,8 +495,8 @@ class CandlecamAPIHandler(APIHandler):
                 self.persistent_data['led_brightness'] = 10
             if 'led_color' not in self.persistent_data:
                 self.persistent_data['led_color'] = "#ffffff"
-            if 'cover_state' not in self.persistent_data:
-                self.persistent_data['cover_state'] = 'closed'
+            #if 'cover_state' not in self.persistent_data:
+            #    self.persistent_data['cover_state'] = 'closed'
             if 'politeness' not in self.persistent_data:
                 self.persistent_data['politeness'] = True
             if 'thing_server_id' not in self.persistent_data:
@@ -513,6 +508,9 @@ class CandlecamAPIHandler(APIHandler):
                 self.persistent_data['data_retention_days'] = 2
             if 'send_to_matrix' not in self.persistent_data:
                 self.persistent_data['send_to_matrix'] = True
+            
+            if 'motion_sensitivity_percentage' not in self.persistent_data:
+                self.persistent_data['motion_sensitivity_percentage'] = 0
             
             if self.DEBUG:
                 print("\n\nself.persistent_data: " + str(self.persistent_data))
@@ -531,6 +529,7 @@ class CandlecamAPIHandler(APIHandler):
             self.previous_led_color = self.persistent_data['led_color']
             self.previous_led_brightness = self.persistent_data['led_brightness']
             self.previous_politeness = self.persistent_data['politeness']
+            self.previous_motion_sensitivity_percentage = self.persistent_data['motion_sensitivity_percentage']
             #self.ringtone_value = Value(self.persistent_data['ringtone'])
             #self.ringtone_value = Value(self.persistent_data['ringtone'], lambda v: self.ringtone_change(v))
             #self.streaming_value = Value(self.persistent_data['streaming'], self.streaming_change)
@@ -717,11 +716,6 @@ class CandlecamAPIHandler(APIHandler):
             print("api handler: error creating adapter: " + str(ex))
             
             
-        
-        
-
-        
-        
         # Setup LED light
         self.lights = None
         try:
@@ -733,50 +727,6 @@ class CandlecamAPIHandler(APIHandler):
             
         except Exception as ex:
             print("Failed in LED setup: " + str(ex))
-        
-        
-        
-        
-        
-        
-        
-        # start libcamera streaming if on Raspbian Bullseye
-        """
-        self.libcamera_available = False
-        cameralib_check = run_command('which libcamera-vid')
-        if self.DEBUG:
-            print("cameralib_check result: " + str(cameralib_check))
-        if cameralib_check != None:
-            if len(cameralib_check) > 10:
-                if self.DEBUG:
-                    print("libcamera seems to be available")
-                self.libcamera_available = True
-                get_snapshot_command = 'libcamera-jpeg -o ' + str(self.latest_photo_file_path) + ' -n --width 640 --height 480'
-                if self.DEBUG:
-                    print("get_snapshot_command = " + str(get_snapshot_command))
-                snapshot_result = run_command(get_snapshot_command)
-                if self.DEBUG:
-                    print("libcamera-jpeg result: " + str(snapshot_result))
-                time.sleep(3)
-        """
- 
-        
-        #print("init: Starting the ffmpeg thread")
-        #if self.DEBUG:
-        #    print("Starting the ffmpeg thread")
-        try:
-            # Restore the timers, alarms and reminders from persistence.
-            #if 'action_times' in self.persistent_data:
-            #    if self.DEBUG:
-            #        print("loading action times from persistence") 
-            #    self.persistent_data['action_times'] = self.persistent_data['action_times']
-            
-            #self.t = threading.Thread(target=self.ffmpeg) #, args=(self.voice_messages_queue,))
-            #self.t.daemon = True
-            #self.t.start()
-            pass
-        except:
-            print("Error starting the clock thread")
         
         
         if os.path.isdir(self.matrix_drop_dir):
@@ -801,6 +751,7 @@ class CandlecamAPIHandler(APIHandler):
             print("Error starting the clock thread: " + str(ex))
             
         
+        
         self.ready = True
         self.save_persistent_data()
         #time.sleep(10)
@@ -809,7 +760,10 @@ class CandlecamAPIHandler(APIHandler):
         try:
             if self.has_respeaker_hat or self.camera_available:
                 
-                
+                if self.has_respeaker_hat and self.persistent_data['politeness']:
+                    if self.DEBUG:
+                        print("init: polite, so closing cover")
+                    self.move_cover('closed')
                 
                 if self.camera_available:
                     if self.DEBUG:
@@ -865,20 +819,26 @@ class CandlecamAPIHandler(APIHandler):
             print("end of init")
         
         
+        
+        
     def run_picam(self):
         if self.DEBUG:
             print("in run_picam")
             print("hires: " + str(self.hires))
             print("portrait_mode: " + str(self.portrait_mode))
-            
         
         while self.running:
             
             time.sleep(.1)
             
-            if self.picam == None and self.persistent_data['streaming']:
+            if self.picam == None and (self.persistent_data['streaming'] or self.persistent_data['motion_sensitivity_percentage'] > 0):
                 if self.DEBUG:
                     print("\n\nSTARTING PICAMERA")
+                
+                if self.persistent_data['politeness'] == False: 
+                    if self.DEBUG:
+                        print("-opening cover in run_picam")
+                    self.move_cover('open')
                 
                 stream = io.BytesIO()
         
@@ -893,6 +853,7 @@ class CandlecamAPIHandler(APIHandler):
         
                 if self.DEBUG:
                     print("- resolution: " + str(resolution))
+                self.resolution = resolution
         
                 with picamera.PiCamera(resolution=resolution, framerate=10) as self.picam:
                     self.picam.exposure_mode = 'auto'
@@ -903,7 +864,7 @@ class CandlecamAPIHandler(APIHandler):
                     for _ in self.picam.capture_continuous(stream, 'jpeg', use_video_port=True):
                         # return current frame
                 
-                        if self.persistent_data['streaming'] == False:
+                        if self.persistent_data['streaming'] == False and self.persistent_data['motion_sensitivity_percentage'] == 0:
                             if self.DEBUG:
                                 print("exiting picam loop")
                             break
@@ -912,25 +873,35 @@ class CandlecamAPIHandler(APIHandler):
                             stream.seek(0)
                             self.frame = stream.read()
                     
-                            if self.take_a_photo: 
-                                # TODO: or if continous periodic recording should be active, perhaps while in security mode?
-                                # TODO: is this too blocking?
-                                if self.DEBUG:
-                                    print("\nself.take_a_photo was True.")
-                                self.take_a_photo = False
-
-                                filename = str(int(time.time())) + '.jpg'
-                                file_path = os.path.join( self.data_photos_dir_path,filename)
-                        
-                                if time.time() - 1 > self.last_write_time: # rate limiter
+                            if time.time() - 1 > self.last_write_time: # rate limiter
+                                self.last_write_time = time.time()
+                                #print("self.frame: " + str(self.frame))
+                                
+                                if self.motion_detection and self.persistent_data['motion_sensitivity_percentage'] > 0:
+                                    self.motion_detected = self.detect_motion(stream)
+                                else:
+                                    self.motion_detected = False
+                                
+                                
+                                
+                                if self.take_a_photo or self.motion_detection_level > self.motion_snapshot_threshold: 
+                                    # TODO: or if continous periodic recording should be active, perhaps while in security mode?
+                                    # TODO: is this too blocking?
                                     if self.DEBUG:
-                                        print("- Saving a photo from the picamera stream")
-                                    self.last_write_time = time.time()
+                                        print("\nself.take_a_photo was True.")
+                                    self.take_a_photo = False
+
+                                    filename = str(int(time.time())) + '.jpg'
+                                    file_path = os.path.join( self.data_photos_dir_path,filename)
+                        
+                                    if self.DEBUG:
+                                        print("saving snapshot to file: " + str(file_path))
                                     #with open(self.mjpeg_file_path, "wb") as binary_file: # if continous storage for mjpeg serving via webthings standard is required
                                     with open(file_path, "wb") as binary_file:
                                         #print("saving jpg as mjpeg")
                                         binary_file.write(self.frame)
-                            
+                                        if self.DEBUG:
+                                            print("frame saved")
                                     # share snapshot with matrix or print to bluetooth printer if allowed and available
                                     self.try_sharing(filename)
                     
@@ -944,352 +915,111 @@ class CandlecamAPIHandler(APIHandler):
                 if self.DEBUG:
                     print("picam is now stopped")
             
-            #print("[z]")
+    
+    
+    def detect_motion(self, stream):
+        #if self.DEBUG:
+        #    print("\nin detect_motion")
+        #    print("-self.resolution[0]: " + str(self.resolution[0]))
+        #    print("-self.resolution[1]: " + str(self.resolution[1]))
             
             
-        
-        
-    
-#
-#  CLOCK
-#
-    
-    """
-    def main_clock(self):
-        
-        if self.DEBUG:
-            print("CLOCK INIT.. ")
-            print("clock: self.persistent_data['data_retention_days']: " + str(self.persistent_data['data_retention_days']))
-        #time.sleep(2)
-        
-
-        while self.running:
-            try:
-                loop_counter += loop_sleep_duration
-                if loop_counter > loop_threshold:
-                    loop_counter = 0
-                    if self.DEBUG:
-                        print("5 minutes passed. Checking for old snapshots to delete")
-                    threshold_time = int(time.time()) - (int(self.persistent_data['data_retention_days']) * 86400) # the moment in the past before which photos should be removed
-                    if self.DEBUG:
-                        print("threshold_time: " + str(threshold_time))
-                    
-                    snapshots = os.listdir(self.data_photos_dir_path)
-                    print("snapshots: " + str(snapshots))
-                    for filename in snapshots:
-                        try:
-                            
-                            #filename = os.path.basename(snapshot_path)
-                            snapshot_time = int(os.path.splitext(filename)[0])
-                            if self.DEBUG:
-                                print("checking is snapshot is too old: " + str(snapshot_time))
-                            if snapshot_time < threshold_time:
-                                file_path = os.path.join(self.data_photos_dir_path,filename)
-                                if self.DEBUG:
-                                    print("- Too old. Deleting: " + str(file_path))
-                                os.remove(file_path)
-                                    
-                        except Exception as ex:
-                            print("Clock: error looping over list of snapshots: " + str(ex))
-                
-            except Exception as ex:
-                print("Error in clock: " + str(ex))
-    
-            time.sleep(5)
-    
-        
-    
-    
-    def ffmpeg(self):
-        if self.DEBUG:
-            print("in ffmpeg")
-        os.system('pkill ffmpeg')
-        
-        #os.system('ffmpeg -input_format yuyv422 -fflags nobuffer -vsync 0 -f video4linux2 -s 1280x720 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v h264_omx -r 10 -b:v 2M -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -f dash ' + self.dash_file_path + ' -remove_at_exit 1')
-        #os.system('ffmpeg -input_format yuyv422 -fflags nobuffer -vsync 0 -f video4linux2 -s 1280x720 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v libx264 -r 10 -b:v:0 400k -profile:v:0 high -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -f dash ' + self.dash_file_path + ' ')
-        #os.system('ffmpeg -input_format yuyv422 -fflags nobuffer -vsync 0 -f video4linux2 -s 1280x720 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v libx264 -r 10 -b:v:0 400k -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -f dash ' + self.dash_file_path + ' ')
-        #os.system('ffmpeg -fflags nobuffer -vsync 0 -f video4linux2 -s 640x360 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v libx264 -r 10 -b:v:0 400k -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -f dash ' + self.dash_file_path + ' ')
-        
-        
-        # WORKS
-        #os.system('ffmpeg -y -f v4l2 -video_size 1280x720 -framerate 25 -i /dev/video0 -vcodec h264_omx -keyint_min 0 -g 100 -map 0:v -b:v 1000k -f dash -min_seg_duration 4000 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 20 ' +  self.dash_file_path )
-        
-        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 2 -i /dev/video0 -vcodec h264_omx -keyint_min 0 -g 100 -map 0:v -b:v 600k -f dash -min_seg_duration 4000 -use_template 1 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -window_size 5 -extra_window_size 10  ' +  self.dash_file_path )
-        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 -vcodec h264_omx -copyts -keyint_min 0 -g 10 -map 0:v -b:v 600k -f dash -use_template 1 -use_timeline 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -window_size 5 -extra_window_size 10  ' +  self.dash_file_path )
-        
-        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 -muxdelay 0 -vcodec h264_omx -keyint_min 0 -g 10 -map 0:v -b:v 400k -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 ' +  self.dash_file_path )
-        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 -muxdelay 0 -vcodec h264_omx -keyint_min 0 -g 10 -map 0:v -b:v 400k -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 ' +  self.dash_file_path )
-        
-        # with audio:
-        
-        if self.DEBUG:
-            print("Creating FFMEG dash command. self.encode_audio = " + str(self.encode_audio))
-        ffmpeg_command = 'ffmpeg  -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 '
-        ffmpeg_command += '-muxdelay 0  -keyint_min 0 -g 10 '
-        if self.encode_audio:
-            ffmpeg_command += '-f alsa -thread_queue_size 16 -ac 1 -ar 44100 -i dsnoop:1,0 '
-        ffmpeg_command += '-map 0:v -b:v 400k -video_track_timescale 9000 '
-        if self.encode_audio:
-            ffmpeg_command += '-map 1:a -c:a aac -b:a 96k '
-        
-        ffmpeg_command += ' -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 '
-        ffmpeg_command += self.ffmpeg_output_path
-                 #+ self.dash_file_path
-        
-        if self.DEBUG:
-            print("calling ffmpeg command: " + str(ffmpeg_command))
-                 
-                 
-        run_command(ffmpeg_command,None)     # -thread_queue_size 16
-        #os.system(ffmpeg_command)
-        if self.DEBUG:
-            print("beyond run ffmpeg")
-        
-        # -muxdelay 0
-        # -re # realtime
-        # -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 1:a -c:a aac -b:a 96k
-        
-        # -init_seg_name init-$RepresentationID$.mp4 -media_seg_name segment-$RepresentationID$-$Number$.mp4
-        
-        # -init_seg_name init-cam1-$RepresentationID$.mp4 -media_seg_name cam1-$RepresentationID$-$Number$.mp4
-        
-    
-    def ffmpeg_mjpeg(self):
-        if self.DEBUG:
-            print("in ffmpeg_mjpeg")
-        os.system('pkill ffmpeg')
-        
-        #os.system('ffmpeg -input_format yuyv422 -fflags nobuffer -vsync 0 -f video4linux2 -s 1280x720 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v h264_omx -r 10 -b:v 2M -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -f dash ' + self.dash_file_path + ' -remove_at_exit 1')
-        #os.system('ffmpeg -input_format yuyv422 -fflags nobuffer -vsync 0 -f video4linux2 -s 1280x720 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v libx264 -r 10 -b:v:0 400k -profile:v:0 high -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -f dash ' + self.dash_file_path + ' ')
-        #os.system('ffmpeg -input_format yuyv422 -fflags nobuffer -vsync 0 -f video4linux2 -s 1280x720 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v libx264 -r 10 -b:v:0 400k -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -f dash ' + self.dash_file_path + ' ')
-        #os.system('ffmpeg -fflags nobuffer -vsync 0 -f video4linux2 -s 640x360 -r 10 -i /dev/video0 -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 0:0 -map 1:0 -c:a aac -b:a 96k -c:v libx264 -r 10 -b:v:0 400k -copyts -probesize 200000 -window_size 5 -extra_window_size 10 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -f dash ' + self.dash_file_path + ' ')
-        
-        
-        # WORKS
-        #os.system('ffmpeg -y -f v4l2 -video_size 1280x720 -framerate 25 -i /dev/video0 -vcodec h264_omx -keyint_min 0 -g 100 -map 0:v -b:v 1000k -f dash -min_seg_duration 4000 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 20 ' +  self.dash_file_path )
-        
-        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 2 -i /dev/video0 -vcodec h264_omx -keyint_min 0 -g 100 -map 0:v -b:v 600k -f dash -min_seg_duration 4000 -use_template 1 -use_timeline 1 -use_template 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -window_size 5 -extra_window_size 10  ' +  self.dash_file_path )
-        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 -vcodec h264_omx -copyts -keyint_min 0 -g 10 -map 0:v -b:v 600k -f dash -use_template 1 -use_timeline 1 -hls_playlist 1 -format_options movflags=empty_moov+omit_tfhd_offset+frag_keyframe+default_base_moof -seg_duration 1 -dash_segment_type mp4 -remove_at_exit 1 -window_size 5 -extra_window_size 10  ' +  self.dash_file_path )
-        
-        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 -muxdelay 0 -vcodec h264_omx -keyint_min 0 -g 10 -map 0:v -b:v 400k -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 ' +  self.dash_file_path )
-        #os.system('ffmpeg -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 -muxdelay 0 -vcodec h264_omx -keyint_min 0 -g 10 -map 0:v -b:v 400k -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 ' +  self.dash_file_path )
-        
-        # with audio:
-        
-        if self.DEBUG:
-            print("Creating FFMEG mjpeg command. self.encode_audio = " + str(self.encode_audio))
-        ffmpeg_command = 'ffmpeg  -y -f v4l2 -fflags nobuffer -vsync 0 -video_size 640x480 -framerate 10 -i /dev/video0 '
-        #ffmpeg_command += '-muxdelay 0  -keyint_min 0 -g 10 '
-        #if self.encode_audio:
-        #    ffmpeg_command += '-f alsa -thread_queue_size 16 -ac 1 -ar 44100 -i dsnoop:1,0 '
-        #ffmpeg_command += '-map 0:v -b:v 400k -video_track_timescale 9000 '
-        #if self.encode_audio:
-        #    ffmpeg_command += '-map 1:a -c:a aac -b:a 96k '
-        
-        #ffmpeg_command += ' -f dash -seg_duration 1 -use_template 1 -use_timeline 1 -remove_at_exit 1 -window_size 6 -extra_window_size 10 '
-        
-        ffmpeg_command += '-c:v mjpeg -q:v 3 -huffman optimal -an '
-        ffmpeg_command += self.mjpeg_file_path #self.ffmpeg_output_path
-                 #+ self.dash_file_path
-        
-        if self.DEBUG:
-            print("calling ffmpeg_mjpeg command: " + str(ffmpeg_command))
-                 
-                 
-        run_command(ffmpeg_command,None)     # -thread_queue_size 16
-        #os.system(ffmpeg_command)
-        if self.DEBUG:
-            print("beyond run ffmpeg_mjpeg")
-        
-        # -muxdelay 0
-        # -re # realtime
-        # -f alsa -ac 1 -ar 44100 -i hw:1,0 -map 1:a -c:a aac -b:a 96k
-        
-        # -init_seg_name init-$RepresentationID$.mp4 -media_seg_name segment-$RepresentationID$-$Number$.mp4
-        
-        # -init_seg_name init-cam1-$RepresentationID$.mp4 -media_seg_name cam1-$RepresentationID$-$Number$.mp4
-        
-        
-        
-    
-    def kill_ffmpeg(self):
+        lowres_width = 640
+        lowres_height = 480
+        if self.portrait_mode:
+            lowres_width = 480
+            lowres_height = 640
+            
+        detected_motion = False
         try:
-            ffmpeg_check_command = 'ps -aux | grep media/candlecam/stream/index.mpd | grep -v "grep"'
-            ffmpeg_check = subprocess.run(ffmpeg_check_command, shell=True, capture_output=True)
-            ffmpeg_check = ffmpeg_check.stdout
-            ffmpeg_check = ffmpeg_check.decode('utf-8')
-            if self.DEBUG:
-                print(str("ffmpeg_check = " + str(ffmpeg_check)))
-            pid = re.match("^pi\s*([0-9]*)\s", ffmpeg_check)
-
-            if pid:
-                if self.DEBUG:
-                    print("stopping pid: " + str(pid.groups()[0]))
-                os.system( 'kill ' + str(pid.groups()[0]) )
-        
-        except Exception as ex:
-            print("Error trying to find and stop running ffmpeg: " + str(ex))
-    """
-        
-        
-    def run_picamera(self):   
-        if self.DEBUG:
-            print("in run_picamera") 
-        #self.picam = picamera.PiCamera(resolution='720p', framerate=10)
-        #self.picam.exposure_mode = 'auto'
-        #self.picam.awb_mode = 'auto'
-        global streaming
-        global frame
-        frame = b''
-        
-        print("run picamera: streaming global: " + str(streaming))
-        try:
-            #self.picam.start_preview()
-            # Give the camera some warm-up time
-            #time.sleep(2)
-            #self.output = StreamOutput(self,self.mjpeg_file_path)
+            changed_pixels = 0
+            #print("Loading fresh image..")
+            fresh_image = Image.open( stream )
             #if self.DEBUG:
-            #    print("run_picamera: start stream capture")
-            #self.picam.start_recording(self.output, format='mjpeg')
+            #    print("fresh image opened")
+            if lowres_width != self.resolution[0]:
+                fresh_image = fresh_image.resize((lowres_width,lowres_height))
+            fresh_buffer = fresh_image.load()
             
-            self.picam = picamera.PiCamera(resolution=(640,480), framerate=15)
-            self.picam.exposure_mode = 'auto'
-            self.picam.awb_mode = 'auto'
+            if self.old_buffer == None:
+                self.old_buffer = fresh_buffer
+                if self.DEBUG:
+                    print("stored first motion detection buffer")
+                return False
             
-            #with picamera.PiCamera(resolution='720p', framerate=10) as self.picam:
-            #    self.picam.exposure_mode = 'auto'
-            #    self.picam.awb_mode = 'auto'
-                
-                # let camera warm up
-            #    time.sleep(2)
-                
-            #streaming = True
-            """
-            stream = io.BytesIO()
-            for _ in self.picam.capture_continuous(stream, 'jpeg', use_video_port=True):
-                
-                
-                
-                # return current frame
-                stream.seek(0)
-                frame = stream.read()
-                
-                # reset stream for next frame
-                stream.seek(0)
-                stream.truncate()
-                
-                if self.take_a_photo: # TODO: or if continous periodic recording should be active, perhaps while in security mode?
-                    if self.DEBUG:
-                        print("\nself.take_a_photo was True.")
-                    self.take_a_photo = False
-
-                    filename = str(int(time.time())) + '.jpg'
-                    file_path = os.path.join( self.data_photos_dir_path,filename)
-                    # This stores a jpg as mjpeg on the SD card. Technically it could then be accessed via the Webthings standard.. if the remote location has a valid JWT. 
-                    # TODO: could be a security feature in the future
-                    if time.time() - 1 > self.last_write_time:
-                        #if self.DEBUG:
-                        if self.DEBUG:
-                            print("- Saving a photo from the picamera stream")
-                        self.last_write_time = time.time()
-                        #with open(self.mjpeg_file_path, "wb") as binary_file: # if continous storage for mjpeg serving via webthings standard is required
-                        with open(file_path, "wb") as binary_file:
-                            #print("saving jpg as mjpeg")
-                            binary_file.write(frame)
-                            
-                        # We end up here if the "shortcut" option was used to quickly save a snapshot from the local camera
-                        if self.send_to_matrix:
-                            if os.path.isdir(self.matrix_drop_dir) and os.path.isfile(file_path):
-                                if self.DEBUG:
-                                    print("sending file to Matrix via Voco")
-                                drop_file_path = os.path.join(self.matrix_drop_dir, "Candlecam_" + socket.gethostname().lower() + '_' + filename)
-                                os.system('cp ' + file_path + ' ' + drop_file_path)
-                            
-                #if streaming == False or self.persistent_data['streaming'] == False:
-                #    print("picamera: stopping streaming")
-                #    break
-                stream.truncate()
+            detect_motion_threshold = 51 - int(self.persistent_data['motion_sensitivity_percentage']/2) # inverted percentage, so higher value = less sensitive
+        
+            for x in range( 0, self.resolution[0] ):
+                for y in range( 0, self.resolution[1] ):
+                    brightness_difference = abs( self.old_buffer[x,y][1] - fresh_buffer[x,y][1] )
+                    if brightness_difference > detect_motion_threshold:
+                        changed_pixels += 1
             
-            """
-            print("picamera should now be up")
+            total_available_pixels = lowres_width * lowres_height
+            self.motion_detection_level = int((changed_pixels / total_available_pixels) * 100)
+            try:
+                self.adapter.candlecam_device.properties["motion_detection_level"].update(self.motion_detection_level)
+            except Exception as ex:
+                if self.DEBUG:
+                    print("Error setting motion_detection_level on thing: " + str(ex))
             
-        except Exception as ex:
-           print('ERROR. run_picamera: Error setting up recording: ' + str(ex))
-        
-        #try:
-        #    while self.persistent_data['streaming']:
-        #        self.picam.wait_recording(2)
-        #except Exception as ex:
-        #    print("ERROR. run_picamera: Error while getting image data from camera module: " + str(ex))
-        #self.picam.stop_recording()
-        #self.output.close()
-        if self.DEBUG:
-            print("at end of picamera thread. Does it close now?")
-        #self.join()
-        
-        
-    # Not useful on Raspian Bullseye yet, as libcamera has no python support yet...
-    
-    """
-    def run_picamera_libcamera(self):
-        if self.DEBUG:
-            print("in run_picamera. Should probably create mjpeg stream now.")
-        
-        
-        if self.encode_audio == False:
-            mjpeg_stream_command = 'libcamera-vid --codec mjpeg -o ' + str(self.mjpeg_file_path) + ' -n --width 640 --height 480'
+            
+            changed_pixels_threshold = int((total_available_pixels / 100) * detect_motion_threshold)
+            
+            
             if self.DEBUG:
-                print("Starting MJPEG stream with command: " + str(mjpeg_stream_command))
-            run_command(mjpeg_stream_command, None)
-    """
+                print("\nmotion sensivity %: " + str(self.persistent_data['motion_sensitivity_percentage']))
+                print("motion changed_pixels: " + str(changed_pixels))
+                print("motion changed_pixels_threshold: " + str(changed_pixels_threshold))
+                print("motion_detection_level: " + str(self.motion_detection_level))
+            
+            if changed_pixels > changed_pixels_threshold:
+                detected_motion = True
+            else:
+                detected_motion = False
+                
+            self.old_buffer = fresh_buffer
+                
+            
+                      
+        except Exception as ex:
+            print("Error while doing motion detection on frame: " + str(ex))
+        
+        return detected_motion
         
         
-    
-
-
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-                    
-                    
                     
     def move_cover(self,state,save=True):
-        if self.has_respeaker_hat and self.camera_available:
+        if self.DEBUG:
+            print("in move_cover. state: " + str(state))
+        if self.has_respeaker_hat:
             
             if state == 'closed':
                 #self.set_led(self.persistent_data['led_color'],self.persistent_data['led_brightness'],False)
                 try:
                     if self.DEBUG:
-                        print("closing cover?: " + str(self.servo_closed_position))
+                        print("closing cover: " + str(self.servo_closed_position))
                     self.pwm.ChangeDutyCycle(70)
                     if self.DEBUG:
-                        print("set servo to closed (1)")
+                        print("- set servo to closed (1)")
                 except Exception as ex:
                     if self.DEBUG:
                         print("could not set servo: " + str(ex))
+                self.cover_currently_open = False
                     
             elif state == 'open':
                 #self.set_led('#ff0000',30,False) # set LED to full brightness.
                 try:
                     if self.DEBUG:
-                        print("opening cover?: " + str(self.servo_open_position))
+                        print("opening cover: " + str(self.servo_open_position))
                     self.pwm.ChangeDutyCycle(1)
                     if self.DEBUG:
-                        print("set servo to open (70)")
+                        print("- set servo to open (70)")
                 except Exception as ex:
                     if self.DEBUG:
                         print("could not set servo: " + str(ex))
+                time.sleep(1)
+                self.cover_currently_open = True
     
             elif state == 'maintenance':
                 try:
@@ -1305,9 +1035,9 @@ class CandlecamAPIHandler(APIHandler):
                 print("no hat and/or no camera, so no need to move the servo")
         #if self.politeness:
         #    state = 'closed'
-        if save:
-            self.persistent_data['cover_state'] = state
-            self.save_persistent_data()
+        #if save:
+        #    self.persistent_data['cover_state'] = state
+        #    self.save_persistent_data()
 
 
 
@@ -1317,15 +1047,26 @@ class CandlecamAPIHandler(APIHandler):
         self.persistent_data['politeness'] = politeness_state
         self.save_persistent_data()
         
-        if self.pressed_countdown == 0:
-            self.move_cover('closed')
-            self.streaming_change(False)
+        # start being polite
+        if politeness_state:
+            if self.pressed_countdown == 0:
+                if self.DEBUG:
+                    print("- polite, and everything is calm, so politeness_change is closing cover")
+                self.move_cover('closed')
+        
+        # stop being polite
+        elif self.persistent_data['streaming']:
+            self.move_cover('open')
+        #
+        #    self.move_cover('closed')
+        #    self.streaming_change(False)
 
         try:
             self.adapter.candlecam_device.properties["politeness"].update(politeness_state)
         except Exception as ex:
             print("Error setting politeness_state on thing: " + str(ex))
 
+        
         
     def send_to_matrix_change(self,state):
         if self.DEBUG:
@@ -1337,6 +1078,7 @@ class CandlecamAPIHandler(APIHandler):
             self.adapter.candlecam_device.properties["send_to_matrix"].update(state)
         except Exception as ex:
             print("Error setting send_to_matrix state on thing: " + str(ex))
+        
         
 
     def volume_change(self,ringtone_volume):
@@ -1351,10 +1093,22 @@ class CandlecamAPIHandler(APIHandler):
             print("Error setting ringtone volume on thing: " + str(ex))
         
         
+    def motion_sensitivity_change(self,value):
+        if self.DEBUG:
+            print("new motion_sensitivity_percentage: " + str(value))
+        self.persistent_data['motion_sensitivity_percentage'] = value
+        self.save_persistent_data()            
+
+        try:
+            self.adapter.candlecam_device.properties["motion_sensitivity_percentage"].update(value)
+        except Exception as ex:
+            print("Error setting motion_sensitivity_percentage on thing: " + str(ex))
+    
+        
 
     def streaming_change(self,state):
         if self.DEBUG:
-            print("in streaming_change. new streaming state: " + str(state))
+            print("\nin streaming_change. new streaming state: " + str(state))
             #print("self.encode_audio: " + str(self.encode_audio))
         
         if self.camera_available == False:
@@ -1391,12 +1145,21 @@ class CandlecamAPIHandler(APIHandler):
         # START STREAMING
         if state:
             if self.DEBUG:
-                print("")
-                print("STREAMING ON")
+                print("\nSTREAMING ON")
             
             self.set_led('#ff0000',self.persistent_data['led_brightness'],False)
-            
-            self.move_cover('open')
+            if self.persistent_data['politeness']:
+                if self.taking_a_photo_countdown == 0:
+                    if self.DEBUG:
+                        print("-polite streaming, so closing cover")
+                    self.move_cover('closed')
+                else:
+                    if self.DEBUG:
+                        print("- polite streaming would normally close the cover now, but taking_a_photo_countdown is not 0")
+            else:
+                if self.DEBUG:
+                    print("- streaming, and not polite, so opening cover")
+                self.move_cover('open')
             
         # STOP STREAMING
         else:
@@ -1441,7 +1204,6 @@ class CandlecamAPIHandler(APIHandler):
             print("Error setting streaming state on thing: " + str(ex))
         
         self.save_persistent_data()
-
 
 
                    
@@ -1627,6 +1389,27 @@ class CandlecamAPIHandler(APIHandler):
                 if self.DEBUG:
                     print("- set maximum connections to 1")
                 
+
+        if "Motion snapshot threshold" in config:
+            self.motion_snapshot_threshold = int(config['Motion snapshot threshold'])
+            if self.motion_snapshot_threshold < 0:
+                self.motion_snapshot_threshold = 0
+            elif self.motion_snapshot_threshold > 100:
+                self.motion_snapshot_threshold = 100
+
+
+        if "Camera cover delay" in config:
+            if config['Camera cover delay'] == '6 seconds':
+                self.pressed_countdown_time = 60
+            elif config['Camera cover delay'] == '30 seconds':
+                self.pressed_countdown_time = 300
+            elif config['Camera cover delay'] == '1 minute':
+                self.pressed_countdown_time = 600
+            elif config['Camera cover delay'] == '3 minutes':
+                self.pressed_countdown_time = 1800
+            elif config['Camera cover delay'] == '5 minutes':
+                self.pressed_countdown_time = 3000
+            
 
         if 'Use ReSpeaker hat' in config:
             self.repeaker_hat_plugged_in = bool(config['Use ReSpeaker hat'])
@@ -2495,7 +2278,15 @@ class CandlecamAPIHandler(APIHandler):
                 if self.previous_ringtone_volume != self.persistent_data['ringtone_volume']:
                     self.previous_ringtone_volume = self.persistent_data['ringtone_volume']
                     self.thingy.properties["ringtone_volume"].value.notify_of_external_update(int(self.persistent_data['ringtone_volume']))
+                    
+                if self.previous_motion_sensitivity_percentage != self.persistent_data['motion_sensitivity_percentage']:
+                    self.previous_motion_sensitivity_percentage = self.persistent_data['motion_sensitivity_percentage']
+                    self.thingy.properties["motion_sensitivity_percentage"].value.notify_of_external_update(int(self.persistent_data['motion_sensitivity_percentage']))
         
+                if self.previous_motion_detection_level != self.motion_detection_level:
+                    self.previous_motion_detection_level = self.motion_detection_level
+                    self.thingy.properties["motion_detection_level"].value.notify_of_external_update(int(self.motion_detection_level))
+                
                 if self.previous_led_color != self.persistent_data['led_color']:
                     self.previous_led_color = self.persistent_data['led_color']
                     #self.streaming_value.notify_of_external_update(self.streaming)
@@ -2580,8 +2371,8 @@ class CandlecamAPIHandler(APIHandler):
         
         if self.pressed_countdown > 0:
             self.pressed_countdown -= 1
-            #if self.DEBUG:
-            #    print(str(self.pressed_countdown))
+            if self.DEBUG:
+                print("self.pressed_countdown: " + str(self.pressed_countdown))
                 
             # After a minute or two, go back into a polite state?
             if self.pressed_countdown == 0: # as it reaches 0
@@ -2649,7 +2440,7 @@ class CandlecamAPIHandler(APIHandler):
         
         self.thingy = Thing(
             'urn:dev:ops:candlecam-' + str(self.persistent_data['thing_server_id']),
-            'Candle cam ' + str(self.persistent_data['thing_server_id']),
+            'Candle camera ' + str(self.persistent_data['thing_server_id']),
             ['VideoCamera'],
             'Candle Camera'
         )
@@ -2779,6 +2570,36 @@ class CandlecamAPIHandler(APIHandler):
                              'type': 'boolean',
                              'description': 'Whether the camera may stream video',
                          }))
+                         
+            self.thingy.add_property(
+                webthing.Property(self.thingy,
+                         'motion_sensitivity_percentage',
+                         Value(self.persistent_data['motion_sensitivity_percentage'], lambda v: self.motion_sensitivity_change(v)),
+                         metadata={
+                             '@type': 'LevelProperty',
+                             'title': 'Motion sensitivity',
+                             'type': 'integer',
+                             'description': 'How sensitive the camera motion detection is',
+                             'minimum': 0,
+                             'maximum': 100,
+                             'unit': 'percent',
+                         }))
+                         
+            self.thingy.add_property(
+                webthing.Property(self.thingy,
+                         'motion_detection_level',
+                         Value(self.motion_detection_level),
+                         metadata={
+                             'title': 'Motion',
+                             'type': 'integer',
+                             'description': 'The amount of motion detected in the video stream',
+                             'minimum': 0,
+                             'maximum': 100,
+                             'unit': 'percent',
+                             'readOnly': True,
+                         }))
+                
+                         
         else:
             if self.DEBUG:
                 print("\nNO camera detected. Not adding start/stop streaming button to thingy")
@@ -3056,7 +2877,21 @@ class StreamyHandler(tornado.web.RequestHandler):
                     self.write("Content-type: image/jpeg\r\n")
                     #self.write("Content-length: %s\r\n\r\n" % frame.getbuffer().nbytes)
                     #self.write(frame.getvalue())
+                    
+                    # Check if frame may be streamed
+                    send_frame = False
                     if self.api_handler.persistent_data['streaming']:
+                        
+                        if self.api_handler.persistent_data['politeness']:
+                            if self.api_handler.has_respeaker_hat and self.api_handler.taking_a_photo_countdown > 0:
+                                send_frame = True
+                            if self.api_handler.has_respeaker_hat and self.api_handler.pressed_countdown > 0:
+                                send_frame = True
+                        else:
+                            send_frame = True
+                             
+                    
+                    if send_frame:
                         #output = io.BytesIO()
                         #self.api_handler.picam.capture(output, format='jpeg', resize=(640,480), use_video_port=True)
                         #output.seek(0)
@@ -3364,7 +3199,7 @@ class CandlecamDevice(Device):
         if self.api_handler.camera_available:
             self.title = 'Candle Camera'
         else:
-            self.title = 'Candle Camera viewer'
+            self.title = 'Candle Camera'
         self.description = 'A privacy friendly smart doorbell or security camera'
         self._type = ['OnOffSwitch']
         #self.connected = False
@@ -3391,13 +3226,54 @@ class CandlecamDevice(Device):
                                         self,
                                         "snapshot",
                                         {
-                                            'label': "Take snapshot",
+                                            'label': "Take snapshots",
                                             'type': 'boolean'
                                         },
                                         False)
 
+                # Motion detection
+                self.properties["motion_sensitivity_percentage"] = CandlecamProperty(
+                                self,
+                                "motion_sensitivity_percentage",
+                                {
+                                    '@type': 'LevelProperty',
+                                    'label': "Motion sensitivity",
+                                    'type': 'integer',
+                                    'minimum': 0,
+                                    'maximum': 100,
+                                    'unit': 'percent'
+                                },
+                                self.api_handler.persistent_data['motion_sensitivity_percentage'])
+                                
+                                
+                self.properties["motion_detection_level"] = CandlecamProperty(
+                                self,
+                                "motion_detection_level",
+                                {
+                                    'label': "Motion",
+                                    'type': 'integer',
+                                    'minimum': 0,
+                                    'maximum': 100,
+                                    'unit': 'percent',
+                                    'readOnly': True
+                                },
+                                self.api_handler.motion_detection_level)
+                                
+                
+                if self.api_handler.voco_installed and self.api_handler.never_send_to_matrix == False:
+                    self.properties["send_to_matrix"] = CandlecamProperty(
+                                self,
+                                "send_to_matrix",
+                                {
+                                    'label': "Send to Matrix",
+                                    'type': 'boolean'
+                                },
+                                self.api_handler.persistent_data['send_to_matrix'])
+                                
+                                
+
             elif self.api_handler.persistent_data['data_retention_days'] > 0:
-                # snapshots can always be taken
+                # snapshots can always be taken, even if no camera is present on the device itself
                 self.properties["snapshot"] = CandlecamProperty(
                                     self,
                                     "snapshot",
@@ -3408,6 +3284,7 @@ class CandlecamDevice(Device):
                                     },
                                     False)
                                 
+                # snapshots can always be shared, even if no camera is present on the device itself
                 if self.api_handler.voco_installed and self.api_handler.never_send_to_matrix == False:
                     self.properties["send_to_matrix"] = CandlecamProperty(
                                         self,
@@ -3420,6 +3297,7 @@ class CandlecamDevice(Device):
                                 
 
 
+            # if ReSpeaker hat is available
             if self.api_handler.has_respeaker_hat:
                 
                 self.properties["button"] = CandlecamProperty(
@@ -3434,7 +3312,7 @@ class CandlecamDevice(Device):
                                 
                                 
                 
-                            
+                # Ringtone
                 self.properties["ringtone"] = CandlecamProperty(
                                 self,
                                 "ringtone",
@@ -3460,6 +3338,7 @@ class CandlecamDevice(Device):
                                 self.api_handler.persistent_data['ringtone_volume'])
 
 
+                # LED
                 self.properties["led_color"] = CandlecamProperty(
                                 self,
                                 "led_color",
@@ -3485,6 +3364,10 @@ class CandlecamDevice(Device):
                                 },
                                 self.api_handler.persistent_data['led_brightness'])
             
+            
+                
+            
+            
                 self.properties["politeness"] = CandlecamProperty(
                                 self,
                                 "politeness",
@@ -3495,14 +3378,9 @@ class CandlecamDevice(Device):
                                 self.api_handler.persistent_data['politeness'])
                 
             
-                self.properties["send_to_matrix"] = CandlecamProperty(
-                                self,
-                                "send_to_matrix",
-                                {
-                                    'label': "Send to Matrix",
-                                    'type': 'boolean'
-                                },
-                                self.api_handler.persistent_data['send_to_matrix'])
+            
+            if self.api_handler.camera_available:
+                
                 
             
 
@@ -3544,13 +3422,16 @@ class CandlecamDevice(Device):
 
 
     def perform_action(self, action):
-        print("an action should be performed: " + str(dir(action)))
-        print(str(action.id))
-        print(str(action.name))
+        if self.DEBUG:
+            print("an action should be performed: " + str(dir(action)))
+            print(str(action.id))
+            print(str(action.name))
         
         if action.name == 'ring':
-            print("action: ring")
+            if self.DEBUG:
+                print("action: ring")
             self.api_handler.play_ringtone()
+            self.api_handler.pressed_countdown = self.api_handler.pressed_countdown_time
 
 #
 # PROPERTY
@@ -3571,8 +3452,7 @@ class CandlecamProperty(Property):
 
     def set_value(self, value):
         if self.device.DEBUG:
-            print("property: set_value called for " + str(self.title))
-            print("property: set value to: " + str(value))
+            print("property: " + str(self.title) + ", set_value() to: " + str(value))
         
         #self.api_handler.set_led(self.api_handler.persistent_data['led_color'],self.api_handler.persistent_data['led_brightness'], False)
         
@@ -3583,7 +3463,11 @@ class CandlecamProperty(Property):
 
             elif self.name == 'snapshot':
                 if self.device.api_handler.camera_available:
-                    self.device.api_handler.take_a_photo = True
+                    if self.has_respeaker_hat:
+                        if self.taking_a_photo_countdown == 0:
+                            self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
+                    else:
+                        self.device.api_handler.take_a_photo = True
                 else:
                     self.device.api_handler.grab_snapshots() # grab snapshots from all servers in the network
                     
@@ -3612,6 +3496,9 @@ class CandlecamProperty(Property):
             elif self.name == 'led_brightness':
                 self.device.api_handler.set_led(self.device.api_handler.persistent_data['led_color'],int(value))
                 #self.update(int(value))
+                
+            elif self.name == 'motion_sensitivity_percentage':
+                self.device.api_handler.motion_sensitivity_change(int(value))
                 
             #elif self.name == 'play_ringtone':
             #    self.device.api_handler.play_ringtone_now(bool(value))
