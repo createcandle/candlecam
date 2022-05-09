@@ -3555,6 +3555,9 @@ class CandlecamProperty(Property):
             elif self.name == 'motion_sensitivity_percentage':
                 self.device.api_handler.motion_sensitivity_change(int(value))
                 
+            elif self.name == 'motion_snapshot':
+                self.device.api_handler.motion_snapshot_change(bool(value))
+                
             #elif self.name == 'play_ringtone':
             #    self.device.api_handler.play_ringtone_now(bool(value))
             #self.
