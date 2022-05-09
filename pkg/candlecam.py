@@ -205,8 +205,8 @@ class CandlecamAPIHandler(APIHandler):
         self.resolution = (640,480)
         self.picam_rotation = 0
         
+        
         # MOTION DETECTION
-        self.motion_detection = True
         self.detected_motion = False
         self.motion_snapshot_threshold = 50
         #self.motion_sensitivity_percentage = 30
@@ -511,6 +511,8 @@ class CandlecamAPIHandler(APIHandler):
             
             if 'motion_sensitivity_percentage' not in self.persistent_data:
                 self.persistent_data['motion_sensitivity_percentage'] = 0
+            if 'motion_snapshot' not in self.persistent_data:
+                self.persistent_data['motion_snapshot'] = False
             
             if self.DEBUG:
                 print("\n\nself.persistent_data: " + str(self.persistent_data))
@@ -530,6 +532,7 @@ class CandlecamAPIHandler(APIHandler):
             self.previous_led_brightness = self.persistent_data['led_brightness']
             self.previous_politeness = self.persistent_data['politeness']
             self.previous_motion_sensitivity_percentage = self.persistent_data['motion_sensitivity_percentage']
+            self.previous_motion_snapshot = self.persistent_data['motion_snapshot']
             #self.ringtone_value = Value(self.persistent_data['ringtone'])
             #self.ringtone_value = Value(self.persistent_data['ringtone'], lambda v: self.ringtone_change(v))
             #self.streaming_value = Value(self.persistent_data['streaming'], self.streaming_change)
@@ -858,8 +861,6 @@ class CandlecamAPIHandler(APIHandler):
                 with picamera.PiCamera(resolution=resolution, framerate=10) as self.picam:
                     self.picam.exposure_mode = 'auto'
                     self.picam.awb_mode = 'auto'
-                
-                    
                     self.picam.rotation = self.picam_rotation
         
                     time.sleep(2)
@@ -880,14 +881,13 @@ class CandlecamAPIHandler(APIHandler):
                                 self.last_write_time = time.time()
                                 #print("self.frame: " + str(self.frame))
                                 
-                                if self.motion_detection and self.persistent_data['motion_sensitivity_percentage'] > 0:
+                                if self.persistent_data['motion_sensitivity_percentage'] > 0:
                                     self.motion_detected = self.detect_motion(stream)
                                 else:
                                     self.motion_detected = False
                                 
                                 
-                                
-                                if self.take_a_photo or self.motion_detection_level > self.motion_snapshot_threshold: 
+                                if self.take_a_photo or (self.persistent_data['motion_snapshot'] and self.motion_detection_level > self.motion_snapshot_threshold): 
                                     # TODO: or if continous periodic recording should be active, perhaps while in security mode?
                                     # TODO: is this too blocking?
                                     if self.DEBUG:
@@ -927,20 +927,22 @@ class CandlecamAPIHandler(APIHandler):
         #    print("-self.resolution[1]: " + str(self.resolution[1]))
             
             
-        lowres_width = 640
-        lowres_height = 480
+        lowres_width = 320
+        lowres_height = 240
         if self.portrait_mode:
-            lowres_width = 480
-            lowres_height = 640
+            lowres_width = 240
+            lowres_height = 320
             
         detected_motion = False
         try:
             changed_pixels = 0
             #print("Loading fresh image..")
             fresh_image = Image.open( stream )
-            #if self.DEBUG:
-            #    print("fresh image opened")
+            if self.DEBUG:
+                print("fresh image opened. size: " + str(fresh_image.size))
             if lowres_width != self.resolution[0]:
+                if self.DEBUG:
+                    print("scaling image")
                 fresh_image = fresh_image.resize((lowres_width,lowres_height))
             fresh_buffer = fresh_image.load()
             
@@ -951,9 +953,9 @@ class CandlecamAPIHandler(APIHandler):
                 return False
             
             detect_motion_threshold = 51 - int(self.persistent_data['motion_sensitivity_percentage']/2) # inverted percentage, so higher value = less sensitive
-        
-            for x in range( 0, self.resolution[0] ):
-                for y in range( 0, self.resolution[1] ):
+            
+            for x in range( 0, lowres_width ):
+                for y in range( 0, lowres_height ):
                     brightness_difference = abs( self.old_buffer[x,y][1] - fresh_buffer[x,y][1] )
                     if brightness_difference > detect_motion_threshold:
                         changed_pixels += 1
@@ -972,14 +974,15 @@ class CandlecamAPIHandler(APIHandler):
             
             if self.DEBUG:
                 print("\nmotion sensivity %: " + str(self.persistent_data['motion_sensitivity_percentage']))
+                print("motion per pixel threshold: " + str(detect_motion_threshold))
                 print("motion changed_pixels: " + str(changed_pixels))
                 print("motion changed_pixels_threshold: " + str(changed_pixels_threshold))
-                print("motion_detection_level: " + str(self.motion_detection_level))
+                print("%: " + str(self.motion_detection_level))
             
-            if changed_pixels > changed_pixels_threshold:
-                detected_motion = True
-            else:
-                detected_motion = False
+            #if changed_pixels > changed_pixels_threshold:
+            #    detected_motion = True
+            #else:
+            #    detected_motion = False
                 
             self.old_buffer = fresh_buffer
                 
@@ -1070,6 +1073,19 @@ class CandlecamAPIHandler(APIHandler):
             print("Error setting politeness_state on thing: " + str(ex))
 
         
+        
+    def motion_snapshot_change(self,state):
+        if self.DEBUG:
+            print("in motion_snapshot_change, state changes to: " + str(state))
+        self.persistent_data['motion_snapshot'] = state
+        self.save_persistent_data()
+
+        try:
+            self.adapter.candlecam_device.properties["motion_snapshot"].update(state)
+        except Exception as ex:
+            print("Error setting motion_snapshot state on thing: " + str(ex))
+            
+            
         
     def send_to_matrix_change(self,state):
         if self.DEBUG:
@@ -1395,8 +1411,8 @@ class CandlecamAPIHandler(APIHandler):
 
         if "Motion snapshot threshold" in config:
             self.motion_snapshot_threshold = int(config['Motion snapshot threshold'])
-            if self.motion_snapshot_threshold < 0:
-                self.motion_snapshot_threshold = 0
+            if self.motion_snapshot_threshold < 1:
+                self.motion_snapshot_threshold = 50
             elif self.motion_snapshot_threshold > 100:
                 self.motion_snapshot_threshold = 100
 
@@ -2296,6 +2312,10 @@ class CandlecamAPIHandler(APIHandler):
                     self.previous_motion_detection_level = self.motion_detection_level
                     self.thingy.properties["motion_detection_level"].value.notify_of_external_update(int(self.motion_detection_level))
                 
+                if self.previous_motion_snapshot != self.persistent_data['motion_snapshot']:
+                    self.previous_motion_snapshot = self.persistent_data['motion_snapshot']
+                    self.thingy.properties["motion_snapshot"].value.notify_of_external_update(bool(self.persistent_data['motion_snapshot']))
+                
                 if self.previous_led_color != self.persistent_data['led_color']:
                     self.previous_led_color = self.persistent_data['led_color']
                     #self.streaming_value.notify_of_external_update(self.streaming)
@@ -2395,7 +2415,7 @@ class CandlecamAPIHandler(APIHandler):
                     
         try:
             self.clock_counter += 1
-            if self.clock_counter > self.clock_threshold:
+            if self.clock_counter > self.clock_threshold: # Prune old files
                 self.clock_counter = 0
                 if self.DEBUG:
                     print("5 minutes passed. Checking for old snapshots to delete")
@@ -2406,20 +2426,27 @@ class CandlecamAPIHandler(APIHandler):
                 snapshots = os.listdir(self.data_photos_dir_path)
                 if self.DEBUG:
                     print("snapshots: " + str(snapshots))
+                    
+                file_count_threshold = len(snapshots) - 1000
+                photo_counter = 0
                 for filename in snapshots:
                     try:
                         #filename = os.path.basename(snapshot_path)
                         snapshot_time = int(os.path.splitext(filename)[0])
                         #if self.DEBUG:
                         #    print("checking if snapshot is too old: " + str(snapshot_time))
-                        if snapshot_time < threshold_time:
+                        if snapshot_time < threshold_time or photo_counter < file_count_threshold:
                             file_path = os.path.join(self.data_photos_dir_path,filename)
                             if self.DEBUG:
                                 print("- Snapshot too old. Deleting: " + str(file_path))
                             os.remove(file_path)
-                                
+                        
+                        photo_counter += 1
+                        
                     except Exception as ex:
                         print("Clock: error looping over list of snapshots: " + str(ex))
+            
+                        
             
         except Exception as ex:
             print("Error in clock: " + str(ex))
@@ -2607,6 +2634,16 @@ class CandlecamAPIHandler(APIHandler):
                              'unit': 'percent',
                              'readOnly': True,
                          }))
+                
+            self.thingy.add_property(
+                webthing.Property(self.thingy,
+                     'motion_snapshot',
+                     Value(self.persistent_data['motion_snapshot'], lambda v: self.motion_snapshot_change(v)),
+                     metadata={
+                         'title': 'Snapshot on motion',
+                         'type': 'boolean',
+                         'description': 'Automatically take a snapshot if motion is detected',
+                     }))
                 
                          
         else:
@@ -3267,6 +3304,15 @@ class CandlecamDevice(Device):
                                     'readOnly': True
                                 },
                                 self.api_handler.motion_detection_level)
+                
+                self.properties["motion_snapshot"] = CandlecamProperty(
+                            self,
+                            "motion_snapshot",
+                            {
+                                'label': "Snapshot on motion",
+                                'type': 'boolean'
+                            },
+                            self.api_handler.persistent_data['motion_snapshot'])
                                 
                 
                 if self.api_handler.voco_installed and self.api_handler.never_send_to_matrix == False:
