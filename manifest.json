@@ -29,6 +29,7 @@
     "default": {
 	  "Portrait mode": false,
 	  "High resolution": false,
+	  "Rotate Camera": "0",
 	  "Motion snapshot threshold": 50,
       "Data retention days": "2",
 	  "Disable sending snapshots to Matrix messenger": false,
@@ -44,6 +45,16 @@
         "High resolution": {
           "description": "If this controller has a camera, then this determines at what level of visual detail the stream is sent. Normally the camera streams at 640x480 pixels to enable streaming to multiple devices at once. If you enable high resolution mode the stream will be 720p (1280x720 pixels), but at the cost of only live streaming to one device at a time.",
           "type": "boolean"
+        },
+        "Rotate Camera": {
+          "description": "Rotate the camera image. The default is 0 degrees.",
+          "enum": [
+			"0",
+            "90",
+            "180",
+            "270"
+          ],
+          "type": "string"
         },
         "Use ReSpeaker hat": {
           "description": "Enable this if you have plugged in a ReSpeaker hat. You will need to install such a device if you want to turn your controller into a smart doorbell.",
@@ -96,7 +107,7 @@
     }
   },
   "short_name": "candlecam",
-  "version": "0.0.15",
+  "version": "0.0.14",
   "web_accessible_resources": [
     "css/*.css",
     "images/*.svg",

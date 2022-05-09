@@ -203,7 +203,7 @@ class CandlecamAPIHandler(APIHandler):
         self.hires = False
         self.maximum_connections = 2
         self.resolution = (640,480)
-        
+        self.picam_rotation = 0
         
         # MOTION DETECTION
         self.motion_detection = True
@@ -858,6 +858,9 @@ class CandlecamAPIHandler(APIHandler):
                 with picamera.PiCamera(resolution=resolution, framerate=10) as self.picam:
                     self.picam.exposure_mode = 'auto'
                     self.picam.awb_mode = 'auto'
+                
+                    
+                    self.picam.rotation = self.picam_rotation
         
                     time.sleep(2)
             
@@ -1438,6 +1441,12 @@ class CandlecamAPIHandler(APIHandler):
             self.send_snapshots_to_printer = bool(config['Send snapshots to printer'])
             if self.DEBUG:
                 print("-Send snapshots to printer preference was in config: " + str(self.send_snapshots_to_printer))
+
+        if 'Rotate camera' in config:
+            self.picam_rotation = int(config['Rotate camera'])
+            if self.DEBUG:
+                pprint("-Rotate camera preference was in config: " + str(self.picam_rotation))
+
 
 
 
