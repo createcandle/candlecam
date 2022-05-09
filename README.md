@@ -6,3 +6,5 @@ This code turn a Raspberry Pi with a camera (and optionally a (ReSpeaker) microp
 
 
 It is available through the Candle store.
+
+https:/www.candlesmarthome.com
