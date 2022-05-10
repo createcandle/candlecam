@@ -31,6 +31,7 @@
 	  "High resolution": false,
 	  "Rotate Camera": "0",
 	  "Motion snapshot threshold": 50,
+	  "Camera cover delay": "1 minute",
       "Data retention days": "2",
 	  "Disable sending snapshots to Matrix messenger": false,
 	  "Send snapshots to printer": false,
@@ -56,13 +57,20 @@
           ],
           "type": "string"
         },
-        "Use ReSpeaker hat": {
-          "description": "Enable this if you have plugged in a ReSpeaker hat. You will need to install such a device if you want to turn your controller into a smart doorbell.",
-          "type": "boolean"
-        },
         "Motion snapshot threshold": {
           "description": "Above which motion level should a snapshot automatically be taken? Set to 100 to disable automatically taking snapshots when motion is detected. The default is 50%.",
           "type": "boolean"
+        },
+        "Camera cover delay": {
+          "description": "If you're using Candle Camera as a polite doorbell, how long should the camera cover stay open after the doorbell is pressed? The default is 1 minute.",
+          "enum": [
+			"6 seconds",
+            "30 seconds",
+            "1 minute",
+            "3 minutes",
+            "5 minutes"
+          ],
+          "type": "string"
         },
         "Data retention days": {
           "description": "For how many days should snapshots be stored? The default is 2 days. Set to 0 to disable taking snapshots.",
@@ -76,17 +84,6 @@
             "7",
             "10",
             "14"
-          ],
-          "type": "string"
-        },
-        "Camera cover delay": {
-          "description": "If you're using Candle Camera as a polite doorbell, how long should the camera cover stay open after the doorbell is pressed? The default is 1 minute.",
-          "enum": [
-			"6 seconds",
-            "30 seconds",
-            "1 minute",
-            "3 minutes",
-            "5 minutes"
           ],
           "type": "string"
         },
@@ -107,7 +104,7 @@
     }
   },
   "short_name": "candlecam",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "web_accessible_resources": [
     "css/*.css",
     "images/*.svg",
