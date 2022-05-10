@@ -5,6 +5,8 @@
 			//console.log("Adding Photo frame to menu");
 	      	this.addMenuEntry('Candlecam');
 
+            this.debug = false;
+
 	      	this.content = '';
 			//var filenames = [];
 			//this.filenames = [];
@@ -311,9 +313,12 @@
               				{'action':'init'}
 
                     ).then((body) => {
-                        console.log(".");
-              			console.log("init returned:");
-              			console.log(body);
+                        if(this.debug){
+                            console.log(".");
+                  			console.log("init returned:");
+                  			console.log(body);
+                        }
+                        
                         //body_parsed = JSON.parse(body);
                         //console.log(body_parsed);
                         //this.thing_settings = JSON.parse(body['thing_settings']);

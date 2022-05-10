@@ -18,6 +18,7 @@ import time
 from time import sleep, mktime
 import uuid
 import json
+#import numpy as np
 #import base64
 import ifaddr
 import random
@@ -25,6 +26,7 @@ import socket
 #import urllib 
 import asyncio
 import logging
+import spidev
 #import datetime
 import webthing
 from webthing import (SingleThing, Thing, Value, WebThingServer)
@@ -52,6 +54,7 @@ import tornado.gen
 #from tornado.util import TimeoutError
 
 import picamera
+import picamera.array
 
 try:
     from gpiozero import Button
@@ -177,6 +180,7 @@ class CandlecamAPIHandler(APIHandler):
         
         # STREAMING
         self.frame = b''
+        self.frame_counter = 0
         self.viewer_count = 0
         self.ffmpeg_process = None
         self.encode_audio = False
@@ -205,6 +209,8 @@ class CandlecamAPIHandler(APIHandler):
         self.motion_detection_level = 0
         self.previous_motion_detection_level = 0
         self.previous_motion_sensitivity_percentage = 0
+        self.motion_buffer_saved = False
+        #np.set_printoptions(threshold=20)
         
         
         # PRINT
@@ -705,7 +711,8 @@ class CandlecamAPIHandler(APIHandler):
         """
         
         # Do an initial network scan
-        self.gateways_ip_dict = self.network_scan()
+        if self.DEBUG == False:
+            self.gateways_ip_dict = self.network_scan()
         
         
         # Create adapter
@@ -842,7 +849,7 @@ class CandlecamAPIHandler(APIHandler):
                         print("-opening cover in run_picam")
                     self.move_cover('open')
                 
-                stream = io.BytesIO()
+                
         
                 resolution = (640,480)
                 if self.hires:
@@ -879,56 +886,188 @@ class CandlecamAPIHandler(APIHandler):
         
                     time.sleep(2)
             
-                    for _ in self.picam.capture_continuous(stream, 'jpeg', use_video_port=True):
+                    while self.persistent_data['streaming'] or self.persistent_data['motion_sensitivity_percentage'] > 0:
+                        
+                        frame_start_time = time.time()
+                        stream = io.BytesIO()
+                        
+                        self.picam.capture(stream, 'jpeg', use_video_port=True)
+            
+                    #for _ in self.picam.capture_continuous(stream, 'jpeg', use_video_port=True):
                         # return current frame
                 
-                        if self.persistent_data['streaming'] == False and self.persistent_data['motion_sensitivity_percentage'] == 0:
-                            if self.DEBUG:
-                                print("exiting picam loop")
-                            break
+                        #if self.persistent_data['streaming'] == False and self.persistent_data['motion_sensitivity_percentage'] == 0:
+                        #    if self.DEBUG:
+                        #        print("exiting picam loop")
+                        #    break
                 
-                        else:
-                            stream.seek(0)
-                            self.frame = stream.read()
-                    
-                            if time.time() - 1 > self.last_write_time: # rate limiter
-                                self.last_write_time = time.time()
-                                #print("self.frame: " + str(self.frame))
-                                
-                                if self.persistent_data['motion_sensitivity_percentage'] > 0:
-                                    self.motion_detected = self.detect_motion(stream)
-                                else:
-                                    self.motion_detected = False
-                                
-                                
-                                if self.take_a_photo or (self.persistent_data['motion_snapshot'] and self.motion_detection_level > self.motion_snapshot_threshold): 
-                                    # TODO: or if continous periodic recording should be active, perhaps while in security mode?
-                                    # TODO: is this too blocking?
-                                    if self.DEBUG:
-                                        print("\nself.take_a_photo was True.")
-                                    self.take_a_photo = False
-
-                                    filename = str(int(time.time())) + '.jpg'
-                                    file_path = os.path.join( self.data_photos_dir_path,filename)
-                        
-                                    if self.DEBUG:
-                                        print("saving snapshot to file: " + str(file_path))
-                                    #with open(self.mjpeg_file_path, "wb") as binary_file: # if continous storage for mjpeg serving via webthings standard is required
-                                    with open(file_path, "wb") as binary_file:
-                                        #print("saving jpg as mjpeg")
-                                        binary_file.write(self.frame)
-                                        if self.DEBUG:
-                                            print("frame saved")
-                                    # share snapshot with matrix or print to bluetooth printer if allowed and available
-                                    self.try_sharing(filename)
-                    
-                    
-                        # reset stream for next frame
+                        #else:
                         stream.seek(0)
-                        stream.truncate()
+                        self.frame = stream.read()
+                        self.frame_counter += 1
+                        
+                        if self.frame_counter > 250:
+                            self.frame_counter = 0
+                            
+                        if frame_start_time - 1 > self.last_write_time: # rate limiter
+                            self.last_write_time = frame_start_time
+                            print(".\n..\n...")
+                            #print("self.frame: " + str(self.frame))
+                            
+                            if self.persistent_data['motion_sensitivity_percentage'] > 0:
+                                self.motion_detected = self.detect_motion(stream)
+                                
+                                """
+                                lowres_width = 320
+                                lowres_height = 240
+                                if self.portrait_mode:
+                                    lowres_width = 240
+                                    lowres_height = 320
+            
+                                total_available_pixels = lowres_width * lowres_height
+        
+                                detected_motion = False
+                                try:
+            
+                                    detect_motion_threshold = 51 - int(self.persistent_data['motion_sensitivity_percentage']/2) # inverted percentage, so higher value = less sensitive
+            
+            
+                                    changed_pixels = 0
+                                    
+                                    print("total_available_pixels " + str(total_available_pixels))
+                                    #data = np.fromstring(str(stream.getvalue()):total_available_pixels, dtype=np.uint8)
+                                    #data = np.fromstring(stream.getvalue(), dtype=np.uint8)
+                                    
+                                    #PiRGBArray
+                                    #data = picamera.array.PiRGBArray(self.picam)
+                                    #image= np.frombuffer(stream.getvalue(), dtype=np.uint8).\
+                                    #        reshape((fheight, fwidth, 3))[:height, :width, :]
+                                    #print("np data: " + str(data))
+                                    #print("data.shape: " + str(data.shape))
+            
+                                    #print("X\nLoading fresh rgb image..")
+                                    #output = io.BytesIO()
+                                    with picamera.array.PiRGBArray(self.picam,(lowres_width,lowres_height)) as output:
+                                    #with picamera.array.PiArrayOutput(self.picam,(lowres_width,lowres_height)) as output:
+                                            self.picam.capture(output, 'rgb', resize=(lowres_width,lowres_height))
+                                            print('Captured %dx%d image' % (
+                                                    output.array.shape[1], output.array.shape[0]))
+            
+                                            
+                                            red = output.array[:,:,2] #.flatten()
+                                            #red = data[:,:,2]
+                                            print("red.shape: " + str(red.shape))
+                                            #print("self.old_buffer: " + str(self.old_buffer))
+                                            #arr = np.arange(101)
+                    
+                                            # Printing all values of array without truncation
+                                            
+                                            #print("red: ")
+                                            #print(red)
+                                            
+                                            if self.motion_buffer_saved == False:
+                                                
+                                                #print("buffer was none")
+                                                self.old_buffer = red #np.copy(red)
+                                                if self.DEBUG:
+                                                    print("stored first motion detection buffer\n\n")
+                            
+                                                self.motion_buffer_saved = True
+                                                
+                                            else:
+                                                #print("OK?")
+        
+                                                # https://stackoverflow.com/questions/38179248/absolute-difference-of-two-numpy-arrays
+        
+                                                absolute_difference_array = np.absolute(self.old_buffer - red)
+                                                #print("absolute_difference_array shape: " + str(absolute_difference_array.shape))
+    
+                                                changed_pixels = np.sum(absolute_difference_array >= detect_motion_threshold)
+                                                print("changed_pixels: " + str(changed_pixels))
+    
+                                                total_available_pixels = lowres_width * lowres_height
+                                                self.motion_detection_level = int((changed_pixels / total_available_pixels) * 100)
+                                                try:
+                                                    self.adapter.candlecam_device.properties["motion_detection_level"].update(self.motion_detection_level)
+                                                except Exception as ex:
+                                                    if self.DEBUG:
+                                                        print("Error setting motion_detection_level on thing: " + str(ex))
+    
+    
+                                                changed_pixels_threshold = int((total_available_pixels / 100) * detect_motion_threshold)
+    
+    
+                                                if self.DEBUG:
+                                                    print("\nmotion sensivity %: " + str(self.persistent_data['motion_sensitivity_percentage']))
+                                                    print("motion per pixel threshold: " + str(detect_motion_threshold))
+                                                    print("motion changed_pixels: " + str(changed_pixels))
+                                                    print("motion changed_pixels_threshold: " + str(changed_pixels_threshold))
+                                                    print("%: " + str(self.motion_detection_level))
+    
+                                                self.old_buffer = red
+                                                    
+                                                
+                                            
+                                            
+                                    #print("motion detection LOOP ______DONE")
+                                    
+                                except Exception as ex:
+                                    print("Error while doing motion detection on frame: " + str(ex))
+                                
+                                
+                                
+                                
+                                
+                                """
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                            else:
+                                self.motion_detected = False
+                            
+                            if self.take_a_photo or (self.persistent_data['motion_snapshot'] and self.motion_detection_level > self.motion_snapshot_threshold): 
+                                # TODO: or if continous periodic recording should be active, perhaps while in security mode?
+                                # TODO: is this too blocking?
+                                if self.DEBUG:
+                                    print("\nself.take_a_photo was True.")
+                                self.take_a_photo = False
+
+                                filename = str(int(time.time())) + '.jpg'
+                                file_path = os.path.join( self.data_photos_dir_path,filename)
+                    
+                                if self.DEBUG:
+                                    print("saving snapshot to file: " + str(file_path))
+                                #with open(self.mjpeg_file_path, "wb") as binary_file: # if continous storage for mjpeg serving via webthings standard is required
+                                with open(file_path, "wb") as binary_file:
+                                    #print("saving jpg as mjpeg")
+                                    binary_file.write(self.frame)
+                                    if self.DEBUG:
+                                        print("frame saved")
+                                # share snapshot with matrix or print to bluetooth printer if allowed and available
+                                self.try_sharing(filename)
+                    
+                        #else:
+                        #    print("\n\nRATE LIMITED\n\n")
+                        # reset stream for next frame
+                        stream.close()
+                        #stream.seek(0)
+                        #stream.truncate()
+                        
+                        frame_duration = time.time() - frame_start_time
+                        if self.DEBUG:
+                            print("frame duration: " + str(frame_duration))
+                        
+                        if frame_duration < 0.1:
+                            if self.DEBUG:
+                                print("picam: zzz-ing for " + str(0.1 - frame_duration) )
+                            time.sleep(0.1 - frame_duration)
                 
                 self.picam = None
-                stream.close()
+                #stream.close()
                 if self.DEBUG:
                     print("picam is now stopped")
             
@@ -968,13 +1107,13 @@ class CandlecamAPIHandler(APIHandler):
             
             detect_motion_threshold = 51 - int(self.persistent_data['motion_sensitivity_percentage']/2) # inverted percentage, so higher value = less sensitive
             
-            for x in range( 0, lowres_width ):
-                for y in range( 0, lowres_height ):
-                    brightness_difference = abs( self.old_buffer[x,y][1] - fresh_buffer[x,y][1] )
+            for x in range( 0, int(lowres_width / 2) ):
+                for y in range( 0, int(lowres_height / 2)):
+                    brightness_difference = abs( self.old_buffer[x*2,y*2][1] - fresh_buffer[x*2,y*2][1] )
                     if brightness_difference > detect_motion_threshold:
                         changed_pixels += 1
             
-            total_available_pixels = lowres_width * lowres_height
+            total_available_pixels = int( (lowres_width * lowres_height) / 4 )
             self.motion_detection_level = int((changed_pixels / total_available_pixels) * 100)
             try:
                 self.adapter.candlecam_device.properties["motion_detection_level"].update(self.motion_detection_level)
@@ -1379,7 +1518,7 @@ class CandlecamAPIHandler(APIHandler):
             spi = spidev.SpiDev()
             spi.open(0,1)
             spi.max_speed_hz = 8000000
-        
+            
             # Get brightness as byte value
             if brightness > 100:
                 brightness = 100
@@ -1392,7 +1531,6 @@ class CandlecamAPIHandler(APIHandler):
             data = []
         
             for led_index in range(3):
-            
                 data.append( brightness_byte )
                 data.append( b )
                 data.append( g )
@@ -2984,6 +3122,7 @@ class StreamyHandler(tornado.web.RequestHandler):
         self.set_header('Connection', 'close')
         self.flush()
         #counter = 0
+        self.frame_count = -1
         
         while True:
             #counter += 1
@@ -3006,6 +3145,18 @@ class StreamyHandler(tornado.web.RequestHandler):
                     
                 
                 if self.served_image_timestamp + mjpg_interval < time.time():
+                    
+                    if self.api_handler.frame_counter == self.frame_count:
+                        for x in range(100):
+                            if self.api_handler.frame_counter == self.frame_count:
+                                yield tornado.gen.sleep(0.01)
+                            else:
+                                if self.api_handler.DEBUG:
+                                    print("streamy: breaking out of for loop that is waiting for an actual new frame. X: " + str(x))
+                                    print("- self.frame_count: " + str(self.frame_count))
+                                    print("- self.api_handler.frame_counter: " + str(self.api_handler.frame_counter))
+                                break
+                    
                     self.served_image_timestamp = time.time()
                     
                     self.write(my_boundary + '\r\n')
@@ -3033,9 +3184,11 @@ class StreamyHandler(tornado.web.RequestHandler):
                         #self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(output))
                         #self.write(output.read())
                         #output.close()
+                        self.frame_count = self.api_handler.frame_counter
                         self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(self.api_handler.frame))
                         self.write(self.api_handler.frame)
                         mjpg_interval = .1
+                        
                     else:
                         #self.write("Content-length: %s\r\n\r\n" % not_streaming_image_size)
                         self.write("Content-length: %s\r\n\r\n" % sys.getsizeof(self.api_handler.not_streaming_image))
@@ -3050,7 +3203,9 @@ class StreamyHandler(tornado.web.RequestHandler):
                     self.flush()
                     
                     #print(">")
-                    yield tornado.gen.sleep(0.05)
+                    yield tornado.gen.sleep(0.01)
+                    
+                    
                     #self.write(my_boundary)
                     #self.write("Content-type: image/jpeg\r\n")
                     #self.write("Content-length: %s\r\n\r\n" % len(img))
@@ -3061,8 +3216,9 @@ class StreamyHandler(tornado.web.RequestHandler):
                     #self.flush()
                     #yield tornado.gen.Task(self.flush)
                 else:
-                    #print("z")
                     yield tornado.gen.sleep(0.01)
+                    #print("z")
+                    
                 
                 
                 
