@@ -67,14 +67,6 @@ if os.path.isdir("/etc/voicecard"):
     except Exception as ex:
         print("Error, could not load RPi.GPIO: " + str(ex))
 
-    try:
-        #from apa102 import APA102
-        from .apa102 import APA102
-        #from .apa import APA102
-    except:
-        print("Error, could not load APA201 LED lights library")
-
-
 try:
     from gateway_addon import Database, Adapter, Device, Property, APIHandler, APIResponse, Action
 except:
@@ -162,7 +154,6 @@ class CandlecamAPIHandler(APIHandler):
         self.pwm = None
         self.lights = None
         self.plughw_number = '0,0'
-        self.has_respeaker_hat = False
         self.ringtones = ['default','classic','klingel','business','fart','none']
         self.cover_currently_open = True
         
@@ -440,6 +431,11 @@ class CandlecamAPIHandler(APIHandler):
         except Exception as ex:
             print("Error loading config: " + str(ex))
 
+        
+        if os.path.isfile('/etc/asound.conf'):
+            if self.DEBUG:
+                print("/etc/asound.conf spotted - respeaker hat very likely")
+            self.repeaker_hat_plugged_in = True
         
         # Get hostname
         try:
@@ -723,12 +719,12 @@ class CandlecamAPIHandler(APIHandler):
             
             
         # Setup LED light
-        self.lights = None
+        self.spi = None
         try:
             if self.has_respeaker_hat:
                 if self.DEBUG:
                     print("setting up LED light on ReSpeaker hat")
-                self.lights = APA102(3)
+                    
                 self.set_led(self.persistent_data['led_color'],self.persistent_data['led_brightness'], False)
             
         except Exception as ex:
@@ -1372,20 +1368,51 @@ class CandlecamAPIHandler(APIHandler):
             r = rgb[0]
             g = rgb[1]
             b = rgb[2]
-        
+            
             #brightness = brightness / 100 # requires values between 0 and 1
             
             if self.DEBUG:
-                print('RGB =', str(rgb))
-                print('Brightness =', str(brightness))
+                print('RGB: ', str(rgb))
+                print('Brightness: ', str(brightness))
             
-            if self.lights:
-                self.lights.set_pixel(0, r, g, b, brightness)  # Pixel 1
-                self.lights.set_pixel(1, r, g, b, brightness)  # Pixel 2
-                self.lights.set_pixel(2, r, g, b, brightness)  # Pixel 3
-                self.lights.show()
-            else:
-                print("set_led: lights was None?")
+            # Open SPI
+            spi = spidev.SpiDev()
+            spi.open(0,1)
+            spi.max_speed_hz = 8000000
+        
+            # Get brightness as byte value
+            if brightness > 100:
+                brightness = 100
+            brightness = int(brightness * 2.5)
+            brightness_byte = (brightness & 0b00011111)
+            if self.DEBUG:
+                print("brightness_byte: " + str(brightness_byte))
+        
+            # Create data for LEDs
+            data = []
+        
+            for led_index in range(3):
+            
+                data.append( brightness_byte )
+                data.append( b )
+                data.append( g )
+                data.append( r )
+        
+            if self.DEBUG:
+                print("led data: " + str(data))
+        
+            # start
+            spi.xfer2([0] * 4)
+        
+            # send data
+            spi.xfer2(data)
+        
+            # end
+            spi.xfer2([0xFF] * 4)
+        
+        
+            # close SPI
+            spi.close()
             
         except Exception as ex:
             print("could not set LED brightness: " + str(ex))
@@ -1475,7 +1502,7 @@ class CandlecamAPIHandler(APIHandler):
             elif config['Camera cover delay'] == '5 minutes':
                 self.pressed_countdown_time = 3000
             
-
+        """
         if 'Use ReSpeaker hat' in config:
             self.repeaker_hat_plugged_in = bool(config['Use ReSpeaker hat'])
             if self.repeaker_hat_plugged_in:
@@ -1487,6 +1514,7 @@ class CandlecamAPIHandler(APIHandler):
                     if self.DEBUG:
                         print("removing use_repeaker_hat.txt from boot partition")
                     os.system('sudo rm /boot/use_repeaker_hat.txt')
+        """
         #if 'Interval' in config:
         #    self.interval = int(config['Interval'])
         #    if self.DEBUG:
@@ -3333,7 +3361,7 @@ class CandlecamDevice(Device):
                                         self,
                                         "snapshot",
                                         {
-                                            'label': "Take snapshots",
+                                            'label': "Take snapshot",
                                             'type': 'boolean'
                                         },
                                         False)
