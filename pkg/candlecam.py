@@ -54,7 +54,7 @@ import tornado.gen
 #from tornado.util import TimeoutError
 
 import picamera
-import picamera.array
+#import picamera.array
 
 try:
     from gpiozero import Button
