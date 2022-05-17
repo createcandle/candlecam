@@ -4,14 +4,14 @@ echo "in package.sh"
 pwd
 which python3
 which pip3
-pip3 install --user --upgrade pip
-
+#pip3 install --user --upgrade pip
+/usr/local/bin/python3.9 -m pip install --upgrade pip
 
 version=$(grep '"version"' manifest.json | cut -d: -f2 | cut -d\" -f2)
 
 export PYTHONIOENCODING=utf8
 #export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
-export LD_LIBRARY_PATH="$HOME/.local/lib:/usr/local/lib:$LD_LIBRARY_PATH" LIBRARY_PATH="$HOME/.local/lib/" CFLAGS="-I$HOME/.local/include"
+export LD_LIBRARY_PATH="$HOME/.local/lib:/root/.local/bin:/usr/local/lib:$LD_LIBRARY_PATH" LIBRARY_PATH="$HOME/.local/lib/" CFLAGS="-I$HOME/.local/include"
 
 # Setup environment for building inside Dockerized toolchain
 [ $(id -u) = 0 ] && umask 0
@@ -34,7 +34,7 @@ mkdir -p lib package
 # This helps skip a compilation check in picamera
 export READTHEDOCS=True 
 
-pip3 install -r requirements.txt -t lib --no-binary :all: --prefix "" --default-timeout=100
+pip3 install -r requirements.txt -t lib --no-binary :all: --prefix "" #--default-timeout=100
 
 # Remove local cffi so that the globally installed version doesn't clash
 rm -rf ./lib/cffi*
