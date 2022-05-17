@@ -5,7 +5,7 @@ pwd
 which python3
 which pip3
 #pip3 install --user --upgrade pip
-/usr/local/bin/python3.9 -m pip install --upgrade pip
+#/usr/local/bin/python3.9 -m pip install --upgrade pip
 
 version=$(grep '"version"' manifest.json | cut -d: -f2 | cut -d\" -f2)
 
