@@ -652,16 +652,20 @@ class CandlecamAPIHandler(APIHandler):
             print("Error making photos directory: " + str(ex))
                 
             
-        # Make photos directory available
+        # Make data photos directory available through API
         try:
             if self.DEBUG:
                 print("Gateway version: " + self.gateway_version)
                 
             self.photos_dir_path = os.path.join(self.addon_path, 'photos')
-            if not os.path.isdir( self.photos_dir_path ):
-                if self.DEBUG:
-                    print(self.photos_dir_path + " directory did not exist yet, creating it now")
-                os.mkdir( self.photos_dir_path )
+            #if not os.path.isdir( self.photos_dir_path ):
+            #    if self.DEBUG:
+            #        print(self.photos_dir_path + " directory did not exist yet, creating it now")
+            #    os.mkdir( self.photos_dir_path )
+            
+            if os.path.isdir( self.photos_dir_path ):
+                os.system('rm -rf ' + str(self.photos_dir_path))
+            
             
             self.data_photos_dir_path = os.path.join(self.user_profile['dataDir'], self.addon_name, 'photos')
             if not os.path.isdir( self.data_photos_dir_path ):
@@ -672,19 +676,19 @@ class CandlecamAPIHandler(APIHandler):
             soft_link = 'ln -s ' + str(self.data_photos_dir_path) + " " + str(self.photos_dir_path)
             if self.DEBUG:
                 print("linking: " + soft_link)
-            os.system('rm -rf ' + str(self.photos_dir_path))
+            
             os.system(soft_link)
                 
                 
         except Exception as ex:
             if self.DEBUG:
-                print("Error prepating photos dir: " + str(ex))
+                print("Error preparing photos dir: " + str(ex))
             
+        
+        # Check if Thing URL Adapter is installed
         try:
             if os.path.isdir(self.webthings_addon_dir):
                 self.webthings_addon_detected = True
-            
-            
         except Exception as ex:
             if self.DEBUG:
                 print("Error checking for thing url adapter dir: " + str(ex))
@@ -2372,8 +2376,8 @@ class CandlecamAPIHandler(APIHandler):
             for fname in os.listdir(self.data_photos_dir_path):
                 if fname.endswith(".jpg") or fname.endswith(".jpeg") or fname.endswith(".gif"):
                     result.append(fname)    
-        except:
-            print("Error scanning photo directory")
+        except Exception as ex:
+            print("Error scanning photo directory: " + str(ex))
         
         return result
 

@@ -6,8 +6,7 @@
         "css/extension.css"
       ],
       "js": [
-        "js/extension.js",
-        "js/shaka.js"
+        "js/extension.js"
       ]
     }
   ],
@@ -48,7 +47,7 @@
           "type": "boolean"
         },
         "Rotate Camera": {
-          "description": "Rotate the camera image. The default is 0 degrees.",
+          "description": "If a camera is attached to this controller, then you can rotate its camera image. The default rotation is 0 degrees.",
           "enum": [
 			"0",
             "90",
