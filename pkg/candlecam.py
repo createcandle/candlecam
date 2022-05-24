@@ -56,10 +56,10 @@ import tornado.gen
 import picamera
 #import picamera.array
 
-try:
-    from gpiozero import Button
-except:
-    print("Error, could not load gpiozero library")
+#try:
+#    from gpiozero import Button
+#except:
+#    print("Error, could not load gpiozero library")
 
 from PIL import Image
 
