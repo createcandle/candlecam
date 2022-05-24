@@ -915,7 +915,7 @@ class CandlecamAPIHandler(APIHandler):
                             
                         if frame_start_time - 1 > self.last_write_time: # rate limiter
                             self.last_write_time = frame_start_time
-                            print(".\n..\n...")
+                            #print(".\n..\n...")
                             #print("self.frame: " + str(self.frame))
                             
                             if self.persistent_data['motion_sensitivity_percentage'] > 0:
@@ -1062,12 +1062,12 @@ class CandlecamAPIHandler(APIHandler):
                         #stream.truncate()
                         
                         frame_duration = time.time() - frame_start_time
-                        if self.DEBUG:
-                            print("frame duration: " + str(frame_duration))
+                        #if self.DEBUG:
+                        #    print("frame duration: " + str(frame_duration))
                         
                         if frame_duration < 0.1:
-                            if self.DEBUG:
-                                print("picam: zzz-ing for " + str(0.1 - frame_duration) )
+                            #if self.DEBUG:
+                            #    print("picam: zzz-ing for " + str(0.1 - frame_duration) )
                             time.sleep(0.1 - frame_duration)
                 
                 self.picam = None
@@ -1130,11 +1130,11 @@ class CandlecamAPIHandler(APIHandler):
             
             
             if self.DEBUG:
-                print("\nmotion sensivity %: " + str(self.persistent_data['motion_sensitivity_percentage']))
-                print("motion per pixel threshold: " + str(detect_motion_threshold))
-                print("motion changed_pixels: " + str(changed_pixels))
-                print("motion changed_pixels_threshold: " + str(changed_pixels_threshold))
-                print("%: " + str(self.motion_detection_level))
+                #print("\nmotion sensivity %: " + str(self.persistent_data['motion_sensitivity_percentage']))
+                #print("motion per pixel threshold: " + str(detect_motion_threshold))
+                #print("motion changed_pixels: " + str(changed_pixels))
+                #print("motion changed_pixels_threshold: " + str(changed_pixels_threshold))
+                print("motion %: " + str(self.motion_detection_level))
             
             #if changed_pixels > changed_pixels_threshold:
             #    detected_motion = True
@@ -3683,7 +3683,9 @@ class CandlecamDevice(Device):
             
                 
             
-            
+            # politeness option is always available
+            if self.api_handler.has_respeaker_hat or self.api_handler.camera_available:
+                
                 self.properties["politeness"] = CandlecamProperty(
                                 self,
                                 "politeness",
