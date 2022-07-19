@@ -29,8 +29,6 @@
                 'door_release_property_id': '',
             }
             
-            
-            
 			
 			fetch(`/extensions/${this.id}/views/content.html`)
 			.then((res) => res.text())
@@ -313,10 +311,17 @@
               				{'action':'init'}
 
                     ).then((body) => {
+                        
+                        console.log("Candlecam init response: ", body);
+                        
+                        if(typeof body.debug != 'undefined'){
+                            this.debug = body.debug;
+                        }
+                        
+                        
+                        
                         if(this.debug){
-                            console.log(".");
-                  			console.log("init returned:");
-                  			console.log(body);
+                  			console.log("Candlecam init response: ", body);
                         }
                         
                         //body_parsed = JSON.parse(body);
@@ -336,25 +341,42 @@
                             this.show_list(body['photos']);
         
                 
-                            if(body['camera_available'] == false){
-                                if(Object.keys(body['gateways']).length == 0){
+                            if(Object.keys(body['gateways']).length == 0){
+                                if(this.debug){
                                     console.log("This controller has no camera attached, and it also detected no other Candle cam instances");
-                                    document.getElementById('extension-candlecam-no-cameras-detected').classList.remove('extension-candlecam-hidden');
-                                    document.getElementById('extension-candlecam-picture-holder').classList.add('extension-candlecam-hidden');
-                                    document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-stream-error');
-                                    document.getElementById('extension-candlecam-content').classList.add('extension-candlecam-no-cameras-detected');
-                                    localStorage.removeItem("candlecam_last_selected_stream");
-                                    //console.log("candlecam_last_selected_stream should now be removed from localstorage");
                                 }
-                                else if(body['webthings_addon_detected'] == false){
+                                document.getElementById('extension-candlecam-no-cameras-detected').classList.remove('extension-candlecam-hidden');
+                                document.getElementById('extension-candlecam-picture-holder').classList.add('extension-candlecam-hidden');
+                                document.getElementById('extension-candlecam-content').classList.remove('extension-candlecam-stream-error');
+                                document.getElementById('extension-candlecam-content').classList.add('extension-candlecam-no-cameras-detected');
+                                localStorage.removeItem("candlecam_last_selected_stream");
+                                //console.log("candlecam_last_selected_stream should now be removed from localstorage");
+                            }
+                            else if(body['webthings_addon_detected'] == false){
+                                if(this.debug){
                                     console.log("no local camera attached, and no webthing addon either, but at least one Candlecam was spotted on the network");
-                                    document.getElementById('extension-candlecam-webthing-tip').classList.remove('extension-candlecam-hidden');
+                                }
+                                document.getElementById('extension-candlecam-webthing-tip').classList.remove('extension-candlecam-hidden');
+                            }
+                            
+                            
+                            /*
+                            if(body['camera_available'] == false){
+                                
+                            }
+                            else{
+                                if(this.debug){
+                                    console.log("This controller has an attached camera module");
+                                }
+                                if(Object.keys(body['gateways']).length == 0){
+                                    
                                 }
                             }
-                
+                            */ 
+                            
                             if(body['camera_available'] == false && body['gateways'].length == 0){
                                 console.log("This controller has no camera attached, and it also detected no controllers");
-                    
+                                document.getElementById('extension-candlecam-content').classList.add('extension-candlecam-no-cameras-detected');
                             }
                 
                 
@@ -586,7 +608,10 @@
                                     {'action':'delete_all'}
                 
                     	        ).then((body) => {
-    	  			
+    	  			                if(this.debug){
+    	  			                    console.log("candlecam: delete all snapshots response: ", body);
+    	  			                }
+                                    
                                     if(body['state']){
                                         this.saved_photos_list = body['data'];
                                         this.show_list(body['data']);
@@ -632,7 +657,9 @@
                                 'stream_url':desired_stream_url}
                     
                 	        ).then((body) => {
-                	  			console.log("grab_picture_from_stream returned: ", body);
+                	  			if(this.debug){
+                                    console.log("candlecam: grab_picture_from_stream returned: ", body);
+                                }
                 	  			//console.log(body);
                                 if(body['state']){
                                     this.saved_photos_list = body['photos'];
@@ -668,7 +695,7 @@
             
                     // door release button
                     document.getElementById("extension-candlecam-door-release-button").addEventListener('click', () => {
-                        console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
+                        //console.log("this.thing_settings.door_release_property_id = " + this.thing_settings.door_release_property_id);
                         const property_id = this.thing_settings.door_release_property_id;
                         const message = JSON.parse(`{ "${this.thing_settings.door_release_property_id}": true}`);
                         //console.log(message);
@@ -739,8 +766,9 @@
                                 {'action':'save_settings','thing_settings':this.thing_settings}
 
                 	        ).then((body) => {
-                	  			console.log("save settings returned:");
-                	  			console.log(body);
+                	  			if(this.debug){
+                                    console.log("save settings returned: ", body);
+                                }
                 	        }).catch((e) => {
                 	        	//pre.innerText = e.toString();
                 	  			console.log("Candlecam: error saving settings: ",e);
@@ -785,7 +813,7 @@
         
     	hide(){
 		
-            console.log("in hide");
+            //console.log("in hide");
     		try {
     			window.clearInterval(this.connection_check_interval);
     		}
@@ -1044,8 +1072,10 @@
             `/extensions/${this.id}/api/delete`,
             {'action':'delete', 'filename':filename}
 				
-          ).then((body) => { 
-    		//console.log(body);
+          ).then((body) => {
+              if(this.debug){
+    		      console.log("candlecam: delete snapshot response: ", body);
+              }
             this.show_list(body['data']);
 
           }).catch((e) => {

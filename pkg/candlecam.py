@@ -364,7 +364,8 @@ class CandlecamAPIHandler(APIHandler):
                 self.camera_available = True
                 
         except Exception as ex:
-            print("Error checking if camera is enabled: " + str(ex))
+            if self.DEBUG:
+                print("Error checking if camera is enabled: " + str(ex))
                 
                 
                 
@@ -1693,7 +1694,65 @@ class CandlecamAPIHandler(APIHandler):
             if self.DEBUG:
                 print("- already doing scan, returning existing dict")
             return self.gateways_ip_dict
+        
+        elif (self.last_network_scan_time + 300) < time.time():
             
+            s = requests.Session()
+            s.mount('http://', HTTPAdapter(max_retries=0))
+            s.mount('https://', HTTPAdapter(max_retries=0))
+                    
+            if self.DEBUG:
+                print("starting new network scan, it's been 5 minutes since the last one")
+            self.last_network_scan_time = int(time.time())
+            self.busy_doing_network_scan = True
+            try:
+                all_controllers = avahi_detect_gateways() # get all Candle controllers on the network
+                if self.DEBUG:
+                    print("all_controllers: " + str(all_controllers))
+                
+                
+                # Test which ones are actual Candlecams
+                candlecams = {} 
+                for ip_address in all_controllers: # server = ip address
+                    try:
+                        #if ip_address == self.own_ip:
+                        #    if self.DEBUG:
+                        #        print("skipping checking own IP")
+                        #        continue
+                        
+                        if self.DEBUG:
+                            print("checking ip_address of potential candlecam: " + str(ip_address) + ", " + str())
+                    
+                        test_url_a = 'http://' + ip_address + ':8889/ping' #'http://' + str(ip_address) + "/"
+                    
+                        response = s.get(test_url_a, allow_redirects=True, timeout=4)
+                        #print("response code: " + str(response.status_code))
+                        if response.status_code == 200:
+                            #print("OK")
+                            candlecams[ ip_address ] = all_controllers[ip_address]
+                            
+                            #print("http response: " + str(response.content.decode('utf-8')))
+                            #html += response.content.decode('utf-8').lower()
+                    except Exception as ex:
+                        if self.DEBUG:
+                            print("Error getting ping response from potential Candlecam: " + str(ex))
+                
+                if self.camera_available and self.own_ip not in candlecams:
+                    if self.DEBUG:
+                        print("network_scan: have camera, so adding own ip and hostname to list of detected candlecams: " + str(self.own_ip) + ", " + str(self.hostname))
+                    candlecams[str(self.own_ip)] = self.hostname
+                
+                self.gateways_ip_dict = candlecams
+                
+            except Exception as ex:
+                if self.DEBUG:
+                    print("Error doing network_scan: " + str(ex))
+                
+            self.busy_doing_network_scan = False
+        
+        return self.gateways_ip_dict
+        
+        """
         if (self.last_network_scan_time + 300) < time.time():
             self.last_network_scan_time = int(time.time())
             self.busy_doing_network_scan = True
@@ -1760,7 +1819,7 @@ class CandlecamAPIHandler(APIHandler):
             if self.DEBUG:
                 print("Returning previous network scan results")
             return self.gateways_ip_dict
-
+        """
 
 
 
@@ -1894,7 +1953,15 @@ class CandlecamAPIHandler(APIHandler):
                                   status=200,
                                   content_type='application/json',
                                   #content=json.dumps({'state' : True, 'message' : 'initialisation complete', 'thing_settings': self.persistent_data['thing_settings'] }),
-                                  content=json.dumps({'state': state, 'own_ip': self.own_ip, 'message': 'initialization complete', 'thing_settings': self.persistent_data['thing_settings'], 'gateways':self.gateways_ip_dict, 'photos':photos_list, 'camera_available':self.camera_available,'webthings_addon_detected':self.webthings_addon_detected }),
+                                  content=json.dumps({'state': state, 
+                                                      'own_ip': self.own_ip, 
+                                                      'message': 'initialization complete', 
+                                                      'thing_settings': self.persistent_data['thing_settings'], 
+                                                      'gateways':self.gateways_ip_dict, 'photos':photos_list, 
+                                                      'camera_available':self.camera_available,
+                                                      'webthings_addon_detected':self.webthings_addon_detected,
+                                                      'debug': self.DEBUG
+                                                      }),
                                 )
                                 
                                 
@@ -4018,3 +4085,62 @@ def randomWord(length=8):
     vowels = "aeiou"
     return "".join(random.choice((consonants, vowels)[i%2]) for i in range(length))
 
+
+
+#
+#  A quick scan of the network.
+#
+def avahi_detect_gateways(list_only=False):
+    #print("in avahi_detect_gateways")
+    command = ["avahi-browse","-p","-l","-a","-r","-k","-t"]
+    gateway_list = []
+    satellite_targets = {}
+    try:
+                
+        result = subprocess.run(command, universal_newlines=True, stdout=subprocess.PIPE) #.decode())
+        for line in result.stdout.split('\n'):
+            
+                
+            if  "IPv4;CandleMQTT-" in line:
+                #print(str(line))
+                # get name
+                try:
+                    before = 'IPv4;CandleMQTT-'
+                    after = ';_mqtt._tcp;'
+                    name = line[line.find(before)+16 : line.find(after)]
+                except Exception as ex:
+                    #print("invalid name: " + str(ex))
+                    continue
+                    
+                # get IP
+                #pattern = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
+                #ip = pattern.search(line)[0]
+                #lst.append(pattern.search(line)[0])
+
+                try:
+                    ip_address_list = re.findall(r'(?:\d{1,3}\.)+(?:\d{1,3})', str(line))
+                    #print("ip_address_list = " + str(ip_address_list))
+                    if len(ip_address_list) > 0:
+                        ip_address = str(ip_address_list[0])
+                        if not valid_ip(ip_address):
+                            continue
+                    
+                        if ip_address not in gateway_list:
+                            gateway_list.append(ip_address)
+                            satellite_targets[ip_address] = name
+                        
+                except Exception as ex:
+                    pass
+                    #print("no IP address in line: " + str(ex))
+                    
+               
+                
+    except Exception as ex:
+        #print("Arp -a error: " + str(ex))
+        pass
+        
+        
+    if list_only:
+        return gateway_list
+    else:
+        return satellite_targets
