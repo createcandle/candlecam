@@ -312,8 +312,6 @@
 
                     ).then((body) => {
                         
-                        console.log("Candlecam init response: ", body);
-                        
                         if(typeof body.debug != 'undefined'){
                             this.debug = body.debug;
                         }
@@ -397,7 +395,7 @@
                         
                         
                                     for (var g = 0; g < Object.keys(body['gateways']).length; g++){
-                                        console.log(g, gateways_keys[g]);
+                                        //console.log(g, gateways_keys[g]);
                                         let gateway = body['gateways'][ gateways_keys[g] ];
                                         //console.log("name: ", gateway);
                                         const stream_url = 'http://' + gateways_keys[g] + ':8889/media/candlecam/stream/stream.mjpeg';
@@ -419,7 +417,9 @@
                                                 //console.log("desired_stream_url: ", desired_stream_url);
                                     
                                                 if( document.getElementById('extension-candlecam-picture').src != desired_stream_url){
-                                                    console.log("- changing src to: ", desired_stream_url);
+                                                    if(this.deubg){
+                                                        console.log("- changing src to: ", desired_stream_url);
+                                                    }
                                                     this.current_stream_url = desired_stream_url;
                                                     try{
                                                         document.getElementById('extension-candlecam-picture').src = desired_stream_url;

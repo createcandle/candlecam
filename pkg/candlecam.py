@@ -316,7 +316,7 @@ class CandlecamAPIHandler(APIHandler):
         # CHECK IF CAMERA IS AVAILABLE
         self.camera_available = False
         try:
-            check_camera_enabled_command_array = ['/opt/vc/bin/vcgencmd','get_camera']
+            check_camera_enabled_command_array = ['vcgencmd','get_camera']
             check_camera_result = subprocess.check_output(check_camera_enabled_command_array)
             check_camera_result = check_camera_result.decode('utf-8')
             if self.DEBUG:
