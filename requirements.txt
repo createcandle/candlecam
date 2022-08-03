@@ -1,5 +1,5 @@
 requests
-picamera
+picamera2
 webthing
 spidev
 ifaddr
