@@ -417,7 +417,7 @@
                                                 //console.log("desired_stream_url: ", desired_stream_url);
                                     
                                                 if( document.getElementById('extension-candlecam-picture').src != desired_stream_url){
-                                                    if(this.deubg){
+                                                    if(this.debug){
                                                         console.log("- changing src to: ", desired_stream_url);
                                                     }
                                                     this.current_stream_url = desired_stream_url;

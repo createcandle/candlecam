@@ -600,7 +600,7 @@ class CandlecamAPIHandler(APIHandler):
             
             
             
-            self.not_streaming_image = os.path.join(self.addon_path, 'images','camera_not_available.jpg')
+            self.not_streaming_image = os.path.join(self.addon_path, 'images','camera_not_available2.jpg')
             
             self.addon_sounds_dir_path = os.path.join(self.addon_path, 'sounds')
             
