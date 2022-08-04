@@ -4,6 +4,7 @@ echo "in package.sh"
 pwd
 which python3
 which pip3
+/usr/local/bin/python3.9 -m pip install --upgrade pip
 #pip3 install --user --upgrade pip
 #/usr/local/bin/python3.9 -m pip install --upgrade pip
 
