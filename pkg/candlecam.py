@@ -343,46 +343,54 @@ class CandlecamAPIHandler(APIHandler):
             if self.DEBUG:
                 print("check_camera_result = " + str(check_camera_result))
             
-            if 'supported=0' in check_camera_result:
-                if self.DEBUG:
-                    print("\n! Pi camera does not seem to be supported\n")
-                #os.system('sudo raspi-config nonint do_i2c 1')
-                """
-                with open("/boot/config.txt", "r") as file:
-                    os.system('cp /boot/config.txt /boot/config.bak')
-                    #for line in file:
-                    #    print (line.split("'")[1])
-                    
-                    if self.DEBUG:
-                        print("modifying /boot/config.txt, and creating .bak backup copy")
-                    if 'start_x' in file:
-                        os.system('sudo sed -i "s/start_x=0/start_x=1/g" /boot/config.txt')
-                    else:
-                        
-                        os.system('echo "start_x=1" >> /boot/config.txt')
-                        
-                    if self.armv6:
-                        if 'gpu_mem' in file:
-                            os.system("sed -i 's/^\(gpu_mem=\).*/\1128/' /boot/config.txt")
-                        else:
-                            os.system('echo "gpu_mem=128" >> /boot/config.txt')
-                    else:
-                        if 'gpu_mem' in file:
-                            os.system("sed -i 's/^\(gpu_mem=\).*/\1256/' /boot/config.txt")
-                        else:
-                            os.system('echo "gpu_mem=256" >> /boot/config.txt')
-                            
-                    self.adapter.send_pairing_prompt("Please reboot the device")
-                
-                """
-            elif 'detected=0' in check_camera_result:
-                if self.DEBUG:
-                    print("\nPi camera is supported, but was not detected\n")
-                    #self.adapter.send_pairing_prompt("No camera detected")
+            # LIBCAMERA
+            if 'libcamera interfaces' in check_camera_result:
+                if 'libcamera interfaces=1' in check_camera_result:
+                    self.camera_available = True
+            
+            # LEGACY            
             else:
-                if self.DEBUG:
-                    print("\nPi camera seems good to go\n")
-                self.camera_available = True
+                if 'supported=0' in check_camera_result:
+                    if self.DEBUG:
+                        print("\n! Pi camera does not seem to be supported\n")
+                    #os.system('sudo raspi-config nonint do_i2c 1')
+                    """
+                    with open("/boot/config.txt", "r") as file:
+                        os.system('cp /boot/config.txt /boot/config.bak')
+                        #for line in file:
+                        #    print (line.split("'")[1])
+                    
+                        if self.DEBUG:
+                            print("modifying /boot/config.txt, and creating .bak backup copy")
+                        if 'start_x' in file:
+                            os.system('sudo sed -i "s/start_x=0/start_x=1/g" /boot/config.txt')
+                        else:
+                        
+                            os.system('echo "start_x=1" >> /boot/config.txt')
+                        
+                        if self.armv6:
+                            if 'gpu_mem' in file:
+                                os.system("sed -i 's/^\(gpu_mem=\).*/\1128/' /boot/config.txt")
+                            else:
+                                os.system('echo "gpu_mem=128" >> /boot/config.txt')
+                        else:
+                            if 'gpu_mem' in file:
+                                os.system("sed -i 's/^\(gpu_mem=\).*/\1256/' /boot/config.txt")
+                            else:
+                                os.system('echo "gpu_mem=256" >> /boot/config.txt')
+                            
+                        self.adapter.send_pairing_prompt("Please reboot the device")
+                
+                    """
+                elif 'detected=0' in check_camera_result:
+                    if self.DEBUG:
+                        print("\nPi camera is supported, but was not detected\n")
+                        #self.adapter.send_pairing_prompt("No camera detected")
+                    
+                else:
+                    if self.DEBUG:
+                        print("\nPi camera seems good to go\n")
+                    self.camera_available = True
                 
         except Exception as ex:
             if self.DEBUG:
@@ -891,6 +899,14 @@ class CandlecamAPIHandler(APIHandler):
                 self.picam = Picamera2()
                 
                 print("self.picam.camera_controls: " + str(dir(self.picam.camera_controls)))
+                
+                # https://github.com/raspberrypi/picamera2/issues/212
+                #preview_config = picam2.create_preview_configuration(
+                #    controls={
+                #        "AwbEnabled": 1, 
+                #        "AwbMode": libcamera.controls.AwbModeEnum.Cloudy
+                #    }
+                #)
                 
                 #with picamera2.Picamera2() as self.picam:
                 
