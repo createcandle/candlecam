@@ -39,7 +39,7 @@ export NOGUI="1"
 #NOGUI=1 pip3 install picamera2
 #wget http://ftp.nl.debian.org/debian/pool/main/libc/libcap2/libcap-dev_2.44-1_armhf.deb
 #dpkg -i libcap-dev_2.44-1_armhf.deb
-#pip3 install --upgrade libpcap
+pip3 install numpy
 #pip3 install --upgrade libpcap PiDNG piexif pillow simplejpeg v4l2-python3 python-prctl
 #pip3 install --upgrade --no-deps picamera2
 
