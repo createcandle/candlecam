@@ -297,7 +297,7 @@ class CandlecamAPIHandler(APIHandler):
             aplay_output = run_command('aplay -l')
             print(str(aplay_output))
             if 'seeed' in aplay_output.lower():
-                print("SEEED ReSpeaker hat spotted")
+                print("ReSpeaker hat spotted")
                 self.has_respeaker_hat = True
                 self.cover_currently_open = False
                 
@@ -326,33 +326,48 @@ class CandlecamAPIHandler(APIHandler):
                 #self.pwm.stop()
                 
             else:
-                print("No SEEED ReSpeaker hat spotted")
+                print("No ReSpeaker hat spotted")
             
         except Exception as ex:
             print("Error while detecting and setting up respeaker hat: " + str(ex))
             
             
-            
-                
+        
         # CHECK IF CAMERA IS AVAILABLE
         self.camera_available = False
         try:
             check_camera_enabled_command_array = ['vcgencmd','get_camera']
             check_camera_result = subprocess.check_output(check_camera_enabled_command_array)
             check_camera_result = check_camera_result.decode('utf-8')
-            if self.DEBUG:
-                print("check_camera_result = " + str(check_camera_result))
+            print("vcgencmd get_camera: " + str(check_camera_result))
             
             # LIBCAMERA
-            if 'libcamera interfaces' in check_camera_result:
-                if 'libcamera interfaces=1' in check_camera_result:
+            if 'libcamera' in check_camera_result:
+
+                print("LIBCAMERA STACK SUPPORTED")
+                check_libcamera_command_array = ['libcamera-still','--list-cameras']
+                check_libcamera_result = subprocess.check_output(check_libcamera_command_array)
+                check_libcamera_result = check_libcamera_result.decode('utf-8')
+                #if self.DEBUG:
+                print("libcamera-still --list-cameras: " + str(check_libcamera_result))
+                
+                if 'No cameras available' in check_libcamera_result:
+                    print("'\nno (lib)camera detected")
+                else:
+                    print("\nOK (lib)camera available")
                     self.camera_available = True
+                
+                #if 'libcamera interfaces=1' in check_camera_result:
+                #    self.camera_available = True
+            
+            
             
             # LEGACY            
             else:
+                print("ERROR, LIBCAMERA STACK NOT SUPPORTED")
+                
                 if 'supported=0' in check_camera_result:
-                    if self.DEBUG:
-                        print("\n! Pi camera does not seem to be supported\n")
+                    print("\n! Pi camera does not seem to be supported\n")
                     #os.system('sudo raspi-config nonint do_i2c 1')
                     """
                     with open("/boot/config.txt", "r") as file:
@@ -383,18 +398,15 @@ class CandlecamAPIHandler(APIHandler):
                 
                     """
                 elif 'detected=0' in check_camera_result:
-                    if self.DEBUG:
-                        print("\nPi camera is supported, but was not detected\n")
+                    print("\nPi camera is supported, but was not detected\n")
                         #self.adapter.send_pairing_prompt("No camera detected")
                     
                 else:
-                    if self.DEBUG:
-                        print("\nPi camera seems good to go\n")
+                    print("\nlegacy Pi camera seems good to go\n")
                     self.camera_available = True
                 
         except Exception as ex:
-            if self.DEBUG:
-                print("Error checking if camera is enabled: " + str(ex))
+            print("Error checking if camera is enabled: " + str(ex))
                 
                 
                 
@@ -548,6 +560,7 @@ class CandlecamAPIHandler(APIHandler):
             if 'night_mode' not in self.persistent_data:
                 self.persistent_data['night_mode'] = False
             
+            #self.persistent_data['thing_server_id'] = self.hostname
             
             if self.DEBUG:
                 print("\n\nself.persistent_data: " + str(self.persistent_data))
@@ -745,8 +758,8 @@ class CandlecamAPIHandler(APIHandler):
         """
         
         # Do an initial network scan
-        if self.DEBUG == False:
-            self.gateways_ip_dict = self.network_scan()
+        #if self.DEBUG == False:
+        self.gateways_ip_dict = self.network_scan()
         
         
         # Create adapter
@@ -898,7 +911,7 @@ class CandlecamAPIHandler(APIHandler):
         
                 self.picam = Picamera2()
                 
-                print("self.picam.camera_controls: " + str(dir(self.picam.camera_controls)))
+                print("self.picam.camera_controls: " + str(dir(self.picam.camera_controls.keys)))
                 
                 # https://github.com/raspberrypi/picamera2/issues/212
                 #preview_config = picam2.create_preview_configuration(
@@ -914,13 +927,16 @@ class CandlecamAPIHandler(APIHandler):
                 
                 #self.picam.configure(picam2.create_preview_configuration())
                 #self.picam.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
-                self.picam.configure(picam2.create_video_configuration(main={"size": resolution}))
+                intial_picam_config = self.picam.create_video_configuration(main={"size": resolution})
+                print("intial_picam_config : " + str(intial_picam_config))
+                self.picam.configure(intial_picam_config)
                 
                 #self.picam.set_controls({"ExposureTime": 100000, "AnalogueGain": 1})
                 
                 #self.output = StreamingOutput()
                 #self.picam.start_recording(JpegEncoder(), FileOutput(self.output))
-                picam2.start()
+                print('starting picam')
+                self.picam.start()
                 
                 time.sleep(2)
                 
@@ -929,7 +945,7 @@ class CandlecamAPIHandler(APIHandler):
                     frame_start_time = time.time()
                     stream = io.BytesIO()
                     #picam2.capture_file(stream, format='jpeg')
-                    print(stream.getbuffer().nbytes)
+                    #print("stream.getbuffer().nbytes: " + str(stream.getbuffer().nbytes))
                 
                     self.picam.capture_file(stream, format='jpeg')
 
@@ -3599,7 +3615,7 @@ class CandlecamDevice(Device):
                             },
                             self.api_handler.persistent_data['motion_snapshot'])
                                 
-                
+                """
                 self.properties["night_mode"] = CandlecamProperty(
                             self,
                             "night_mode",
@@ -3608,7 +3624,7 @@ class CandlecamDevice(Device):
                                 'type': 'boolean'
                             },
                             self.api_handler.persistent_data['night_mode'])
-                
+                """
                 
                 if self.api_handler.voco_installed and self.api_handler.never_send_to_matrix == False:
                     self.properties["send_to_matrix"] = CandlecamProperty(
@@ -3815,9 +3831,9 @@ class CandlecamProperty(Property):
 
             elif self.name == 'snapshot':
                 if self.device.api_handler.camera_available:
-                    if self.has_respeaker_hat:
-                        if self.taking_a_photo_countdown == 0:
-                            self.taking_a_photo_countdown = self.taking_a_photo_countdown_start
+                    if self.device.api_handler.has_respeaker_hat:
+                        if self.device.api_handler.taking_a_photo_countdown == 0:
+                            self.device.api_handler.taking_a_photo_countdown = self.device.api_handler.taking_a_photo_countdown_start
                     else:
                         self.device.api_handler.take_a_photo = True
                 else:
