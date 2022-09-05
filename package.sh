@@ -1,5 +1,8 @@
 #!/bin/bash -e
 
+echo "whoami?:"
+whoami
+echo
 echo "in package.sh"
 pwd
 echo "which python3:"
@@ -43,13 +46,14 @@ mkdir -p lib package
 export READTHEDOCS=True 
 export NOGUI="1"
 
-
+apt install cmake
 
 #NOGUI=1 pip3 install picamera2
 #wget http://ftp.nl.debian.org/debian/pool/main/libc/libcap2/libcap-dev_2.44-1_armhf.deb
 #dpkg -i libcap-dev_2.44-1_armhf.deb
 echo
 echo "installing numpy"
+pip3 install py-build-cmake
 pip3 install numpy
 #pip3 install --upgrade libpcap PiDNG piexif pillow simplejpeg v4l2-python3 python-prctl
 #pip3 install --upgrade --no-deps picamera2
