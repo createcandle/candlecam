@@ -58,8 +58,7 @@ export NOGUI="1"
 
 apt-get update -y
 apt-get update
-apt install cmake build-essential libssl-dev -y
-apt-get install ninja-build -y
+apt install cmake build-essential libssl-dev ninja-build libpcap-dev -y
 
 #NOGUI=1 pip3 install picamera2
 #wget http://ftp.nl.debian.org/debian/pool/main/libc/libcap2/libcap-dev_2.44-1_armhf.deb
