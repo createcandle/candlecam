@@ -2,13 +2,20 @@
 
 echo "whoami?:"
 whoami
+
 echo
-echo "in package.sh"
+echo "users:"
+cat /etc/passwd
+
+echo
+echo "in package.sh. pwd:"
 pwd
+echo
 echo "which python3:"
 which python3
 echo "which pip3:"
 which pip3
+
 echo
 echo "Upgrading pip:"
 pip3 install --user --upgrade pip
@@ -47,6 +54,7 @@ export READTHEDOCS=True
 export NOGUI="1"
 
 apt-get update -y
+apt-get update
 apt install cmake build-essential libssl-dev -y
 
 #NOGUI=1 pip3 install picamera2
