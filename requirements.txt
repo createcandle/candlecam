@@ -7,3 +7,4 @@ libpcap
 PiDNG 
 piexif
 simplejpeg
+v4l2-python3
