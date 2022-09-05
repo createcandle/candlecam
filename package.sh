@@ -68,6 +68,7 @@ echo
 echo "installing numpy"
 pip3 install py-build-cmake
 pip3 install numpy
+pip3 install python-prctl
 #pip3 install --upgrade libpcap PiDNG piexif pillow simplejpeg v4l2-python3 python-prctl
 #pip3 install --upgrade --no-deps picamera2
 
