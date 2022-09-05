@@ -15,6 +15,9 @@ echo "which python3:"
 which python3
 echo "which pip3:"
 which pip3
+echo
+echo "glibc version:"
+ldd --version
 
 echo
 echo "Upgrading pip:"
