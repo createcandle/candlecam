@@ -1,4 +1,4 @@
-"""Candlecam add-on for WebThings Gateway."""
+"""Candlecam add-on for Candle Controller."""
 
 from os import path
 import functools
