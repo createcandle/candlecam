@@ -352,7 +352,7 @@
                             }
                             else if(body['webthings_addon_detected'] == false){
                                 if(this.debug){
-                                    console.log("no local camera attached, and no webthing addon either, but at least one Candlecam was spotted on the network");
+                                    console.log("no webthing detected, but at least one Candlecam was spotted on the network");
                                 }
                                 document.getElementById('extension-candlecam-webthing-tip').classList.remove('extension-candlecam-hidden');
                             }
@@ -714,7 +714,8 @@
             
                     // show saved pictures archive button
                     document.getElementById("extension-candlecam-picture-exit").addEventListener('click', () => {
-                        document.getElementById("extension-candlecam-content").classList.add('extension-candlecam-show-overview');
+                        this.show_snapshots();
+                        //document.getElementById("extension-candlecam-content").classList.add('extension-candlecam-show-overview');
                     });
             
             
@@ -826,14 +827,15 @@
 
 
         grab_mjpeg_frame(stream_url){
-            
             window.API.postJson(
               `/extensions/candlecam/api/ajax`,
       				{'action':'grab_mjpeg_frame',
                     'stream_url': stream_url}
 
             ).then((body) => {
-      			//console.log("grab_mjeg_frame returned:");
+                if(this.debug){
+                    console.log("grab_mjeg_frame returned: ", body);
+                }
       			//console.log(body);
                 //body_parsed = JSON.parse(body);
                 //console.log(body_parsed);
@@ -842,10 +844,13 @@
             }).catch((e) => {
             	//pre.innerText = e.toString();
       			console.log("Candle cam: grab_mjpeg_frame error: ", e);
-            });
-            
-            
+            });            
         }
+
+
+
+        
+
 
 
 
@@ -955,6 +960,34 @@
     	//
     	//  SHOW LIST
     	//
+
+
+        show_snapshots(){
+            if(this.debug){
+                console.log("in show_snapshots");
+            }
+            window.API.postJson(
+              `/extensions/candlecam/api/list`
+
+            ).then((body) => {
+                if(this.debug){
+                    console.log("candlecam api /list returned: ", body);
+                }
+                if(typeof body.data != 'undefined'){
+                    this.show_list(body.data);
+                }
+                else{
+                    console.log("CANDLECAM ERROR: NO DATA IN /LIST RESPONSE.");
+                }
+                
+                
+            }).catch((e) => {
+            	//pre.innerText = e.toString();
+      			console.log("candlecam api /list error: ", e);
+            });
+            document.getElementById("extension-candlecam-content").classList.add('extension-candlecam-show-overview');
+        }
+        
 
         show_list(file_list){
     		//console.log("Updating photo list")

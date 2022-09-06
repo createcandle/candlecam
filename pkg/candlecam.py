@@ -1963,6 +1963,8 @@ class CandlecamAPIHandler(APIHandler):
                                 
                                 
                             elif action == 'grab_picture_from_stream':
+                                if self.DEBUG:
+                                    print("in /grab_picture_from_stream")
                                 state = False
                                 photos_list = []
                                 try:
@@ -1970,8 +1972,12 @@ class CandlecamAPIHandler(APIHandler):
                                         stream_url = str(request.body['stream_url'])    
                                     
                                         state = self.grab_snapshots(stream_url)
+                                        
+                                        if self.has_respeaker_hat:
+                                            time.sleep(5)
+                                        else:
+                                            time.sleep(2)
                                             
-                                        time.sleep(1)
                                         try:
                                             photos_list = self.scan_photo_dir()
                                             if isinstance(photos_list, str):
@@ -1980,6 +1986,9 @@ class CandlecamAPIHandler(APIHandler):
                                         except Exception as ex:
                                             print("Error scanning for existing photos: " + str(ex))
                                             photos_list = []
+                                        
+                                        if self.DEBUG:
+                                            print("returning new photos list: " + str(photos_list))
                                             
                                 except Exception as ex:
                                     if self.DEBUG:
@@ -2073,6 +2082,9 @@ class CandlecamAPIHandler(APIHandler):
                                 state = 'error'
                             else:
                                 state = 'ok'
+                            
+                            if self.DEBUG:
+                                print("photos list: " + str(data))
                             
                             return APIResponse(
                               status=200,
