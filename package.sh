@@ -58,7 +58,7 @@ export NOGUI="1"
 
 #apt-get update -y
 apt update
-apt install python3-numpy
+apt install python3-numpy -y
 #apt install cmake build-essential libssl-dev ninja-build libcap-dev libpcap-dev -y
 
 #NOGUI=1 pip3 install picamera2
