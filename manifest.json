@@ -31,7 +31,7 @@
 	  "Rotate Camera": "0",
 	  "Motion snapshot threshold": 50,
 	  "Camera cover delay": "1 minute",
-      "Data retention days": "2",
+	  "Data retention days": "2",
 	  "Disable sending snapshots to Matrix messenger": false,
 	  "Send snapshots to printer": false,
       "Debugging": false
@@ -49,7 +49,7 @@
         "Rotate Camera": {
           "description": "If a camera is attached to this controller, then you can rotate its camera image. The default rotation is 0 degrees.",
           "enum": [
-			"0",
+            "0",
             "90",
             "180",
             "270"
@@ -63,7 +63,7 @@
         "Camera cover delay": {
           "description": "If you're using Candle Camera as a polite doorbell, how long should the camera cover stay open after the doorbell is pressed? The default is 1 minute.",
           "enum": [
-			"6 seconds",
+            "6 seconds",
             "30 seconds",
             "1 minute",
             "3 minutes",
@@ -74,7 +74,7 @@
         "Data retention days": {
           "description": "For how many days should snapshots be stored? The default is 2 days. Set to 0 to disable taking snapshots.",
           "enum": [
-			"0",
+            "0",
             "1",
             "2",
             "3",
@@ -103,7 +103,7 @@
     }
   },
   "short_name": "candlecam",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "web_accessible_resources": [
     "css/*.css",
     "images/*.svg",
