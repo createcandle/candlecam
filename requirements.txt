@@ -3,5 +3,4 @@ webthing
 spidev
 ifaddr
 libpcap
-PiDNG 
 piexif
