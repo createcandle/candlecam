@@ -2,7 +2,6 @@ requests
 webthing
 spidev
 ifaddr
-RPi.GPIO
 libpcap
 PiDNG 
 piexif
