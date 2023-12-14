@@ -26,14 +26,14 @@
   "name": "Candle cam",
   "options": {
     "default": {
-	  "Portrait mode": false,
-	  "High resolution": false,
-	  "Rotate Camera": "0",
-	  "Motion snapshot threshold": 50,
-	  "Camera cover delay": "1 minute",
-	  "Data retention days": "2",
-	  "Disable sending snapshots to Matrix messenger": false,
-	  "Send snapshots to printer": false,
+      "Portrait mode": false,
+      "High resolution": false,
+      "Rotate Camera": "0",
+      "Motion snapshot threshold": 50,
+      "Camera cover delay": "1 minute",
+      "Data retention days": "2",
+      "Disable sending snapshots to Matrix messenger": false,
+      "Send snapshots to printer": false,
       "Debugging": false
     },
     "schema": {
