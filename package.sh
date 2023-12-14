@@ -59,6 +59,7 @@ export NOGUI="1"
 #apt-get update -y
 apt update
 apt install python3-numpy -y
+curl https://sh.rustup.rs -sSf | sh
 #apt install cmake build-essential libssl-dev ninja-build libcap-dev libpcap-dev -y
 
 #NOGUI=1 pip3 install picamera2
@@ -75,9 +76,12 @@ echo "installing numpy"
 echo
 echo "installing requirements"
 echo
-pip3 install -r requirements.txt -t lib --no-binary :all: --prefix "" #--default-timeout=100
+#pip3 install -r requirements.txt -t lib --no-binary :all: --prefix "" #--default-timeout=100
+#pip3 install PiDNG -t lib --no-deps --no-binary :all: --prefix "" 
 
-pip3 install PiDNG -t lib --no-deps --no-binary :all: --prefix "" 
+pip3 install -r requirements.txt -t lib --prefix "" #--default-timeout=100
+pip3 install PiDNG -t lib --no-deps --prefix "" 
+
 
 #echo
 #echo "install picamera2"
