@@ -77,6 +77,8 @@ echo "installing requirements"
 echo
 pip3 install -r requirements.txt -t lib --no-binary :all: --prefix "" #--default-timeout=100
 
+pip3 install PiDNG -t lib --no-deps --no-binary :all: --prefix "" 
+
 #echo
 #echo "install picamera2"
 #pip3 install -r picamera2 -t lib  --no-deps --no-binary :all: --prefix ""
