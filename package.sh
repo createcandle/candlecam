@@ -59,7 +59,9 @@ export NOGUI="1"
 #apt-get update -y
 apt update
 apt install python3-numpy -y
-curl https://sh.rustup.rs -sSf | sh
+
+# installing rust doesn't work, the process is interactive:
+#curl https://sh.rustup.rs -sSf | sh
 #apt install cmake build-essential libssl-dev ninja-build libcap-dev libpcap-dev -y
 
 #NOGUI=1 pip3 install picamera2
