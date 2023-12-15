@@ -6,7 +6,8 @@ on:
 
 jobs:
   get-release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu20.04
+    timeout-minutes: 10
     steps:
     - name: Get Release
       id: get_release
