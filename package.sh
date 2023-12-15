@@ -86,7 +86,7 @@ pip3 install -r requirements.txt -t lib --no-binary :all: --prefix "" #--default
 
 echo
 echo "installing PiDNG"
-pip3 install PiDNG -t lib --no-deps --no-binary :all: --prefix "" 
+pip3 install PiDNG -t lib --no-deps --no-binary :all: --prefix "" -v --no-build-isolation
 
 
 #echo
