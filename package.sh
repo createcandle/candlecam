@@ -20,9 +20,9 @@ echo "glibc version:"
 ldd --version
 
 echo
-echo "Upgrading pip:"
-pip3 install --user --upgrade pip
-python3 -m pip install --upgrade pip
+#echo "Upgrading pip:"
+#pip3 install --user --upgrade pip
+#python3 -m pip install --upgrade pip
 #/usr/local/bin/python3.9 -m pip install --upgrade pip
 
 version=$(grep '"version"' manifest.json | cut -d: -f2 | cut -d\" -f2)
@@ -57,8 +57,6 @@ export READTHEDOCS=True
 export NOGUI="1"
 
 #apt-get update -y
-apt update
-apt install python3-numpy -y
 
 # installing rust doesn't work, the process is interactive:
 #curl https://sh.rustup.rs -sSf | sh
@@ -69,6 +67,9 @@ apt install python3-numpy -y
 #dpkg -i libcap-dev_2.44-1_armhf.deb
 echo
 echo "installing numpy"
+apt update
+apt install python3-numpy -y
+
 #pip3 install py-build-cmake
 #pip3 install numpy
 #pip3 install python-prctl
@@ -76,13 +77,16 @@ echo "installing numpy"
 #pip3 install --upgrade --no-deps picamera2
 
 echo
-echo "installing requirements"
+echo "installing requirements (except PiDNG)"
 echo
 #pip3 install -r requirements.txt -t lib --no-binary :all: --prefix "" #--default-timeout=100
 #pip3 install PiDNG -t lib --no-deps --no-binary :all: --prefix "" 
 
-pip3 install -r requirements.txt -t lib --prefix "" #--default-timeout=100
-pip3 install PiDNG -t lib --no-deps --prefix "" 
+pip3 install -r requirements.txt -t lib --no-binary :all: --prefix "" #--default-timeout=100
+
+echo
+echo "installing PiDNG"
+pip3 install PiDNG -t lib --no-deps --no-binary :all: --prefix "" 
 
 
 #echo
