@@ -6,7 +6,7 @@ on:
 
 jobs:
   get-release:
-    runs-on: ubuntu20.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
     - name: Get Release
