@@ -103,7 +103,7 @@
     }
   },
   "short_name": "candlecam",
-  "version": "0.1.14",
+  "version": "0.1.80",
   "web_accessible_resources": [
     "css/*.css",
     "images/*.svg",
