@@ -92,8 +92,9 @@ pip3 install PiDNG -t lib --no-deps --no-binary :all: --prefix "" -v --no-build-
 #echo
 #echo "install picamera2"
 #pip3 install -r picamera2 -t lib  --no-deps --no-binary :all: --prefix ""
+
 # Remove local cffi so that the globally installed version doesn't clash
-#rm -rf ./lib/cffi*
+rm -rf ./lib/cffi*
 
 # Put package together
 cp -r lib pkg LICENSE manifest.json *.py README.md sounds css js images views package/
